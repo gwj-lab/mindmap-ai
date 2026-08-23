@@ -1,0 +1,359 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Layout, Model, type TabNode } from "flexlayout-react";
+import { AlertCircle, CheckCircle2, X } from "lucide-react";
+import { DEFAULT_DOCK_LAYOUT } from "../../shared/layout.js";
+import type { ActiveProjectSnapshot, MindMapNodeData } from "../../shared/types.js";
+import {
+  applyPersistedCandidate,
+  attachPortableCandidate,
+  createPortableChild,
+  createPortableSibling,
+  movePortableSubtreeToHistory,
+  permanentlyRemovePortableTrash,
+  renamePortableNode,
+  restorePortableHistory,
+  restorePortableTrash,
+  trashPortableCandidate,
+  trashPortableHistory,
+  trashPortableSubtrees,
+  updatePortableLinkedNodeTitle
+} from "../state/project-state.js";
+import { AiPanel } from "./components/AiPanel.js";
+import { AiSettingsPage } from "./components/AiSettingsPage.js";
+import { AnswerDialog } from "./components/AnswerDialog.js";
+import { EmptyWorkspace } from "./components/EmptyWorkspace.js";
+import { MindMapPanel, type MindMapController } from "./components/MindMapPanel.js";
+import { NodeTray } from "./components/NodeTray.js";
+import { ProjectNavigator } from "./components/ProjectNavigator.js";
+import { ProjectNameDialog } from "./components/ProjectNameDialog.js";
+import { StylePanel } from "./components/StylePanel.js";
+import { TopBar } from "./components/TopBar.js";
+import { WorkspaceSwitcher } from "./components/WorkspaceSwitcher.js";
+import { useProject } from "./state/use-project.js";
+
+interface OpenAnswer {
+  answerId: string;
+  nodeUid: string;
+}
+
+function createLayoutModel(json: unknown): Model {
+  try {
+    return Model.fromJson(structuredClone(json) as never);
+  } catch {
+    return Model.fromJson(structuredClone(DEFAULT_DOCK_LAYOUT) as never);
+  }
+}
+
+export function App(): React.JSX.Element {
+  const {
+    workspace,
+    snapshot,
+    recentWorkspaces,
+    workspaceInitialized,
+    saveStatus,
+    message,
+    setSnapshot,
+    setMessage,
+    initializeWorkspace,
+    switchWorkspace,
+    forgetRecentWorkspace,
+    createWorkspace,
+    openWorkspace,
+    createNestedProject,
+    switchProject,
+    renameProject,
+    openProjectInExplorer,
+    moveProjectToTrash,
+    restoreProject,
+    permanentlyDeleteProject,
+    exportProject,
+    saveProject
+  } = useProject();
+  const [layoutOverride, setLayoutOverride] = useState<{ projectId: string; model: Model } | null>(null);
+  const [controller, setController] = useState<MindMapController | null>(null);
+  const [openAnswer, setOpenAnswer] = useState<OpenAnswer | null>(null);
+  const [projectCreationParentId, setProjectCreationParentId] = useState<string | null | undefined>(undefined);
+  const [workspacePage, setWorkspacePage] = useState<"dock" | "api-settings">("dock");
+  const [workspaceSwitcherOpen, setWorkspaceSwitcherOpen] = useState(false);
+  const activeProjectId = snapshot?.manifest.projectId;
+  const selectedMindMapTheme = snapshot?.state.uiPreferences.mindMapTheme ?? "paper";
+  const savedDockLayout = snapshot?.state.dockLayout;
+  const projectModel = useMemo(
+    () => createLayoutModel(savedDockLayout ?? DEFAULT_DOCK_LAYOUT),
+    [savedDockLayout]
+  );
+  const model = activeProjectId && layoutOverride?.projectId === activeProjectId
+    ? layoutOverride.model
+    : projectModel;
+
+  useEffect(() => {
+    void initializeWorkspace();
+  }, [initializeWorkspace]);
+
+  useEffect(() => {
+    const unsubscribeCaptured = window.mindmapAI.ai.onAnswerCaptured((acknowledgement) => {
+      const current = useProject.getState().snapshot;
+      if (current) useProject.getState().setSnapshot(applyPersistedCandidate(current, acknowledgement.candidate));
+      setMessage(acknowledgement.apiWarning
+        ? `已捕获：${acknowledgement.candidate.title}；${acknowledgement.apiWarning}`
+        : `已捕获：${acknowledgement.candidate.title}`);
+    });
+    const unsubscribeError = window.mindmapAI.ai.onAdapterError(setMessage);
+    return () => {
+      unsubscribeCaptured();
+      unsubscribeError();
+    };
+  }, [setMessage]);
+
+  useEffect(() => {
+    if (saveStatus !== "dirty" || !snapshot) return;
+    const timer = window.setTimeout(() => void saveProject(), 700);
+    return () => window.clearTimeout(timer);
+  }, [saveProject, saveStatus, snapshot]);
+
+  useEffect(() => {
+    if (controller && activeProjectId) controller.applyTheme(selectedMindMapTheme);
+  }, [activeProjectId, controller, selectedMindMapTheme]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        void saveProject();
+      }
+    };
+    const onPointerDown = (event: PointerEvent): void => {
+      if ((event.target as Element).closest(".flexlayout__tab_button")) window.mindmapAI.ai.beginLocalDrag();
+    };
+    const onPointerUp = (): void => window.mindmapAI.ai.endLocalDrag();
+    window.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("pointerup", onPointerUp, true);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("pointerup", onPointerUp, true);
+    };
+  }, [saveProject]);
+
+  const updateSnapshot = useCallback((updater: (current: ActiveProjectSnapshot) => ActiveProjectSnapshot): void => {
+    const current = useProject.getState().snapshot;
+    if (current && !current.readOnly) setSnapshot(updater(current));
+  }, [setSnapshot]);
+
+  const factory = useMemo(() => (node: TabNode): React.ReactNode => {
+    if (!snapshot) return null;
+    switch (node.getComponent()) {
+      case "mindmap":
+        return (
+          <MindMapPanel
+            data={snapshot.mindmap}
+            readOnly={snapshot.readOnly}
+            onChange={(mindmap: MindMapNodeData) => updateSnapshot((current) => ({ ...current, mindmap }))}
+            onCandidateDrop={(candidateId, targetUid) => updateSnapshot((current) => attachPortableCandidate(current, candidateId, targetUid))}
+            onHistoryDrop={(historyId, targetUid) => updateSnapshot((current) => restorePortableHistory(current, historyId, targetUid))}
+            onOpenAnswer={(answerId, nodeUid) => setOpenAnswer({ answerId, nodeUid })}
+            onRenameNode={(nodeUid, title) => updateSnapshot((current) => renamePortableNode(current, nodeUid, title))}
+            onCreateChild={(nodeUid) => updateSnapshot((current) => createPortableChild(current, nodeUid, "新节点"))}
+            onCreateSibling={(nodeUid) => updateSnapshot((current) => createPortableSibling(current, nodeUid, "新节点"))}
+            onMoveToHistory={(nodeUid) => updateSnapshot((current) => movePortableSubtreeToHistory(current, nodeUid))}
+            onDeleteNodes={(nodeUids) => updateSnapshot((current) => trashPortableSubtrees(current, nodeUids))}
+            onController={setController}
+          />
+        );
+      case "ai":
+        return (
+          <AiPanel
+            readOnly={snapshot.readOnly}
+            autoHoverCapture={snapshot.state.uiPreferences.autoHoverCapture}
+            captureMode={snapshot.state.uiPreferences.captureMode}
+            onAutoHoverCaptureChange={(autoHoverCapture) => updateSnapshot((current) => ({
+              ...current,
+              state: {
+                ...current.state,
+                uiPreferences: { ...current.state.uiPreferences, autoHoverCapture }
+              }
+            }))}
+            onCaptureModeChange={(captureMode) => updateSnapshot((current) => ({
+              ...current,
+              state: { ...current.state, uiPreferences: { ...current.state.uiPreferences, captureMode } }
+            }))}
+            onOpenSettings={() => setWorkspacePage("api-settings")}
+          />
+        );
+      case "candidates":
+        return (
+          <NodeTray
+            candidates={snapshot.state.candidates}
+            history={snapshot.state.history}
+            trash={snapshot.state.trash}
+            readOnly={snapshot.readOnly}
+            onUpdateCandidate={(updated) => updateSnapshot((current) => ({
+              ...current,
+              state: {
+                ...current.state,
+                candidates: current.state.candidates.map((candidate) =>
+                  candidate.id === updated.id ? updated : candidate
+                )
+              }
+            }))}
+            onDeleteCandidate={(candidateId) => updateSnapshot((current) => trashPortableCandidate(current, candidateId))}
+            onDeleteHistory={(historyId) => updateSnapshot((current) => trashPortableHistory(current, historyId))}
+            onRestoreTrash={(trashId) => updateSnapshot((current) => restorePortableTrash(current, trashId))}
+            onPermanentDelete={(trashId) => updateSnapshot((current) => permanentlyRemovePortableTrash(current, trashId))}
+            onMapSubtreeDrop={(nodeUid) => updateSnapshot((current) => movePortableSubtreeToHistory(current, nodeUid))}
+          />
+        );
+      case "styles":
+        return (
+          <StylePanel
+            controller={snapshot.readOnly ? null : controller}
+            currentTheme={snapshot.state.uiPreferences.mindMapTheme ?? "paper"}
+            onApplyTheme={(mindMapTheme) => {
+              controller?.applyTheme(mindMapTheme);
+              updateSnapshot((current) => ({
+                ...current,
+                state: {
+                  ...current.state,
+                  uiPreferences: { ...current.state.uiPreferences, mindMapTheme }
+                }
+              }));
+            }}
+          />
+        );
+      default:
+        return <div className="unknown-panel">未知模块</div>;
+    }
+  }, [controller, snapshot, updateSnapshot]);
+
+  const resetLayout = (): void => {
+    if (snapshot?.readOnly) return;
+    const nextModel = createLayoutModel(DEFAULT_DOCK_LAYOUT);
+    if (activeProjectId) setLayoutOverride({ projectId: activeProjectId, model: nextModel });
+    if (snapshot) setSnapshot({
+      ...snapshot,
+      state: { ...snapshot.state, dockLayout: nextModel.toJson() }
+    });
+  };
+
+  return (
+    <div className="app-shell">
+      <TopBar
+        projectName={snapshot?.manifest.name}
+        readOnly={snapshot?.readOnly}
+        saveStatus={saveStatus}
+        onCreate={() => { setOpenAnswer(null); void createWorkspace(); }}
+        onOpen={() => { setOpenAnswer(null); void openWorkspace(); }}
+        onSwitchWorkspace={() => setWorkspaceSwitcherOpen(true)}
+        onSave={() => void saveProject()}
+        onResetLayout={resetLayout}
+      />
+      {!workspaceInitialized ? (
+        <main className="workspace-loading" aria-label="正在恢复工作区">正在恢复上次工作区…</main>
+      ) : !snapshot ? (
+        <EmptyWorkspace
+          onCreate={() => { setOpenAnswer(null); void createWorkspace(); }}
+          onOpen={() => { setOpenAnswer(null); void openWorkspace(); }}
+        />
+      ) : (
+        <div className="workspace-frame">
+          {workspace && (
+            <ProjectNavigator
+              workspace={workspace}
+              onSwitch={(projectId) => { setOpenAnswer(null); void switchProject(projectId); }}
+              onCreate={setProjectCreationParentId}
+              onOpenApiSettings={() => setWorkspacePage("api-settings")}
+              onRename={(projectId, name) => void renameProject(projectId, name)}
+              onOpenInExplorer={(projectId) => void openProjectInExplorer(projectId)}
+              onMoveToTrash={(projectId) => {
+                if (window.confirm("将此项目移到垃圾箱？项目内容可以恢复。")) {
+                  setOpenAnswer(null);
+                  void moveProjectToTrash(projectId);
+                }
+              }}
+              onRestore={(projectId) => void restoreProject(projectId)}
+              onPermanentDelete={(projectId) => {
+                if (window.confirm("彻底删除此项目？此操作无法撤销。")) {
+                  void permanentlyDeleteProject(projectId, false);
+                }
+              }}
+              onExport={(projectId) => void exportProject(projectId)}
+            />
+          )}
+          <main className="dock-workspace">
+            {workspacePage === "api-settings" ? (
+              <AiSettingsPage
+                titleSource={snapshot.state.uiPreferences.titleSource}
+                onClose={() => setWorkspacePage("dock")}
+                onTitleSourceChange={(titleSource) => updateSnapshot((current) => ({
+                  ...current,
+                  state: { ...current.state, uiPreferences: { ...current.state.uiPreferences, titleSource } }
+                }))}
+              />
+            ) : (
+              <Layout
+                model={model}
+                factory={factory}
+                realtimeResize
+                onModelChange={(nextModel) => {
+                  if (activeProjectId) setLayoutOverride({ projectId: activeProjectId, model: nextModel });
+                  const current = useProject.getState().snapshot;
+                  if (current && !current.readOnly) setSnapshot({
+                    ...current,
+                    state: { ...current.state, dockLayout: nextModel.toJson() }
+                  });
+                }}
+              />
+            )}
+          </main>
+        </div>
+      )}
+      {openAnswer && snapshot && (
+        <AnswerDialog
+          {...openAnswer}
+          readOnly={snapshot.readOnly}
+          onClose={() => setOpenAnswer(null)}
+          onRetitle={(nodeUid, title) => updateSnapshot((current) => updatePortableLinkedNodeTitle(current, nodeUid, title))}
+        />
+      )}
+      {projectCreationParentId !== undefined && (
+        <ProjectNameDialog
+          parentProjectId={projectCreationParentId}
+          onClose={() => setProjectCreationParentId(undefined)}
+          onSubmit={async (name, parentProjectId) => {
+            setOpenAnswer(null);
+            await createNestedProject(name, parentProjectId);
+          }}
+        />
+      )}
+      {workspaceSwitcherOpen && (
+        <WorkspaceSwitcher
+          entries={recentWorkspaces}
+          onClose={() => setWorkspaceSwitcherOpen(false)}
+          onSwitch={(id) => {
+            setOpenAnswer(null);
+            void switchWorkspace(id).then(() => setWorkspaceSwitcherOpen(false));
+          }}
+          onForget={(id) => void forgetRecentWorkspace(id)}
+          onOpen={() => {
+            setWorkspaceSwitcherOpen(false);
+            setOpenAnswer(null);
+            void openWorkspace();
+          }}
+          onCreate={() => {
+            setWorkspaceSwitcherOpen(false);
+            setOpenAnswer(null);
+            void createWorkspace();
+          }}
+        />
+      )}
+      {message && (
+        <div className={`toast ${saveStatus === "error" ? "toast--error" : ""}`}>
+          {saveStatus === "error" ? <AlertCircle size={17} /> : <CheckCircle2 size={17} />}
+          <span>{message}</span>
+          <button onClick={() => setMessage("")}><X size={15} /></button>
+        </div>
+      )}
+    </div>
+  );
+}
