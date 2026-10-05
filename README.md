@@ -1,54 +1,72 @@
-# Mindmap AI
+# Mindmap AI — Turn ChatGPT Conversations into Mind Maps
 
-Mindmap AI 是面向 Windows 10/11 的本地优先研究工作台：在隔离的 ChatGPT 网页中捕获回答，将正文保存为 Markdown，再把单节点或自动提取的节点树拖入思维导图。
+AI conversations move in a line. Thinking rarely does. A useful answer often leads to a new question about one concept, then another. Mindmap AI helps you take those branches out of the chat and see how they connect.
 
-## 当前能力
+Capture a ChatGPT answer, link it to a mind-map node, and grow the topic into a visual structure you can revisit and rearrange. Keep the full answer as Markdown alongside the ideas it supports.
 
-- 精确识别鼠标悬停的单条助手回答；支持双击捕获、捕获最新和页面点选。
-- 回答保存为带 YAML 元数据的 Markdown，支持 GFM、代码块、表格和 LaTeX/KaTeX 公式。
-- 单一节点或最多 12 个子节点；可用本地规则，也可配置一组 OpenAI 兼容 HTTPS API 生成标题和子方案。
-- XMind 风格的节点快捷键、右键重命名/删除、拖动换父级、撤销重做、缩放和主题。
-- 候选、历史和垃圾箱统一托盘；导图子树可移入历史后恢复，删除项可恢复或彻底删除。
-- 一个工作区包含多个主项目和子项目，布局、导图、托盘和样式分别保存。
-- 同一条网页回答可反复截取为相互独立的 Markdown 副本；答案关联节点显示内容角标。
-- 每个项目生成可由 Obsidian 等 Markdown 工具打开的 `map.md`，内含可见大纲和 Mermaid 思维导图。
+> **Current scope:** Mindmap AI currently supports ChatGPT only. The application interface is currently in Chinese.
 
-## 开发运行
+## Why Mindmap AI
 
-需要 Windows 10/11、Node.js 24+ 和 pnpm 11。也可以从 GitHub Releases 下载 Windows x64 安装包。
+Long AI conversations make it hard to see where a line of inquiry began, which ideas belong together, and what to explore next. A mind map gives each follow-up question its own place while keeping it connected to the original topic.
+
+Instead of searching back through a long chat, capture the answer that matters and connect it to the branch where it belongs. The conversation stays available in ChatGPT; your map becomes a visual index of the ideas you want to keep exploring.
+
+## What you can do
+
+- **Capture a specific answer.** Hover over an assistant response, double-click to capture it, capture the latest response, or select an answer on the page.
+- **Keep answers with the ideas they support.** Save each response as Markdown and associate it with a mind-map node. Capture the same response more than once as independent notes.
+- **Branch into subtopics.** Create a single-node candidate or generate up to 12 child topics. Review the candidate, edit titles, reorder or remove children, then drag it into the map.
+- **Explore and reshape the map.** Add child or sibling nodes, rename and move branches, undo or redo changes, and link a node to a child project.
+- **Read and edit the source material.** The built-in reader supports Markdown, tables, code blocks, and LaTeX math.
+- **Keep research organized locally.** Work across multiple projects and nested subprojects. Each project can export a `map.md` outline and Mermaid diagram, alongside `mindmap.json` for restoring application-specific map data.
+
+## Download
+
+Download the latest Windows x64 installer from [GitHub Releases](https://github.com/650865589/mindmap-ai/releases/latest).
+
+Mindmap AI is designed for Windows 10/11. ChatGPT sign-in uses an isolated Electron session; the app does not read or store your ChatGPT password. An optional OpenAI-compatible HTTPS API can generate titles and child topics. API keys are stored by the Electron main process using Windows secure storage.
+
+## Run from source
+
+Requirements: Windows 10/11, Node.js 24 or later, and pnpm 11.
 
 ```powershell
 pnpm install
 pnpm dev
 ```
 
-在 Windows 上构建安装包：
+On first launch, choose an empty folder for a workspace. Later launches reopen the last workspace; use **Switch Workspace** to open another one or create a new workspace.
+
+To build a Windows x64 installer:
 
 ```powershell
 pnpm package:win
 ```
 
-安装包生成在 `release/` 目录中。
+The installer is written to `release/`.
 
-首次启动选择一个空文件夹创建工作区。以后启动会自动恢复上次成功打开的工作区；顶部“切换工作区”可从最近列表切换，也可打开其他文件夹或新建工作区。ChatGPT 登录保存在 Electron 的 `persist:provider-chatgpt` 会话中，应用不读取账号密码。
+## Typical workflow
 
-## 基本流程
+1. Sign in to ChatGPT in the app's ChatGPT pane and have a conversation.
+2. Choose **Single Node** or **Generate Child Nodes**.
+3. Capture an assistant answer using hover and double-click, **Capture Latest**, or page selection.
+4. Review the candidate, adjust its title or child topics, and drag it onto the relevant map node.
+5. Open an answer-linked node to read or edit its Markdown. Press `Ctrl+S` to save immediately.
 
-1. 在右侧登录 ChatGPT 并完成对话。
-2. 选择“单一节点”或“生成子节点”，然后悬停回答、点选回答或点击“捕获最新”。
-3. 在候选托盘中检查并编辑标题，把卡片拖到任意导图节点。
-4. 双击回答节点阅读或编辑 Markdown；`Ctrl+S` 立即刷新保存队列。
-5. 在项目菜单中创建子项目、移入项目垃圾箱或导出独立项目。
+The interface is currently in Chinese, so the labels above describe the corresponding features rather than exact on-screen text.
 
-API 设置是可选项，可从左侧“API 配置”或 AI 面板齿轮进入同一配置页。密钥仅在 Electron 主进程中通过 Windows 系统加密能力保存；渲染器只能看到“已保存/未保存”。单一节点模式使用模型生成一个标题，生成子节点模式还会生成最多 12 个有序子方案。API 超时、格式错误或网络失败时自动回退本地提取，不影响回答和候选保存。
+## Optional AI topic generation
 
-DeepSeek 可在 API 配置页点击“使用 DeepSeek 配置”，预设 `https://api.deepseek.com` 与 `deepseek-chat`，输入密钥后可先“测试连接”。连接失败会区分密钥、余额、模型/地址、限流和服务端问题；捕获时若发生回退，界面会明确提示已使用本地规则。
+Without API settings, Mindmap AI uses local extraction rules. You can also configure an OpenAI-compatible HTTPS API in **API Settings**. Single-node mode generates one title; child-node mode generates an ordered set of up to 12 subtopics. If a request times out or returns an error, the app falls back to local extraction and keeps the captured answer.
 
-## 可移植性
+DeepSeek is available as a preset. Enter an API key, then use **Test Connection** before capturing answers. The app reports connection and generation failures and indicates when it used local extraction instead.
 
-工作区和独立项目格式详见 [docs/portable-project-format.md](docs/portable-project-format.md)。最便携的入口是项目的 `map.md` 和回答 Markdown；`mindmap.json` 用于无损恢复应用专属的节点属性。Mermaid 是通用预览，不承诺保存节点坐标、颜色等全部 UI 状态。
+## Data and portability
 
-## 验证
+Workspace and standalone project formats are documented in [docs/portable-project-format.md](docs/portable-project-format.md). Each project's `map.md` provides a readable outline and Mermaid diagram. `mindmap.json` preserves application-specific node properties such as layout and styling that a Mermaid diagram cannot represent.
+
+## Development checks
 
 ```powershell
 pnpm test
@@ -58,8 +76,10 @@ pnpm build
 pnpm test:e2e
 ```
 
-真实 ChatGPT 登录、Cookie 持久化及外部 DOM 变化不进入 CI，按 [Windows 验收清单](docs/windows-acceptance-checklist.md)手工确认。
+Real ChatGPT sign-in, cookie persistence, and changes to ChatGPT's page structure require manual checks. See the [Windows acceptance checklist](docs/windows-acceptance-checklist.md).
 
-## 安全与许可
+## Security and license
 
-远程网页关闭 Node 集成，启用上下文隔离、沙箱和 Web 安全；默认拒绝摄像头、麦克风、通知和文件权限。磁盘路径只能来自系统选择器。源码采用 [MIT License](LICENSE)，第三方组件见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+The remote ChatGPT page runs without Node.js integration and with context isolation, sandboxing, and web security enabled. The app denies camera, microphone, notification, and file permissions by default. Filesystem paths come from native folder pickers.
+
+Mindmap AI is released under the [MIT License](LICENSE). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for third-party notices.
