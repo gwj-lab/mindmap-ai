@@ -18,6 +18,70 @@ afterEach(async () => {
 });
 
 describe("WorkspaceStore", () => {
+  test("moves projects with their descendants and keeps canonical ancestry after stale saves", async () => {
+    const root = await makeRoot();
+    const store = new WorkspaceStore(root);
+    const opened = await store.initialize("Research", "Main");
+    const second = await store.createProject("Second", null);
+    const grandchild = await store.createProject("Nested", second.manifest.projectId);
+    const stale = await store.switchProject(second.manifest.projectId);
+    await store.reparentProject(second.manifest.projectId, opened.project.manifest.projectId);
+    stale.mindmap.text = "Unsaved work retained";
+    await store.saveActive(stale);
+    const loaded = await new WorkspaceStore(root).load();
+    expect(loaded.project.manifest.parentProjectId).toBe(opened.project.manifest.projectId);
+    expect(loaded.project.mindmap.text).toBe("Unsaved work retained");
+    expect(loaded.workspace.projects.find((p) => p.projectId === grandchild.manifest.projectId)?.parentProjectId).toBe(second.manifest.projectId);
+    const before = await readFile(path.join(root, "workspace.json"), "utf8");
+    await expect(store.reparentProject(opened.project.manifest.projectId, grandchild.manifest.projectId)).rejects.toThrow("后代");
+    await expect(store.reparentProject(second.manifest.projectId, second.manifest.projectId)).rejects.toThrow("自身");
+    expect(await readFile(path.join(root, "workspace.json"), "utf8")).toBe(before);
+    await store.reparentProject(second.manifest.projectId, null);
+    expect((await store.switchProject(second.manifest.projectId)).manifest.parentProjectId).toBeNull();
+  });
+
+  test("copies a node as a linked child center and recovers the entrance from Markdown", async () => {
+    const root = await makeRoot();
+    const store = new WorkspaceStore(root);
+    const opened = await store.initialize("Research", "Main");
+    opened.project.mindmap.children.push({ uid: "topic", text: "Topic", answerId: "original-answer", children: [{ uid: "detail", text: "Detail", children: [] }] });
+    await store.saveActive(opened.project);
+    const linked = await store.linkNode("topic", { kind: "create", name: "Topic project" });
+    const entrance = linked.project.mindmap.children[0]!;
+    expect(linked.workspace.activeProjectId).toBe(opened.project.manifest.projectId);
+    expect(entrance.answerId).toBe("original-answer");
+    expect(entrance.children[0]?.text).toBe("Detail");
+    const child = await store.switchProject(entrance.linkedProjectId!);
+    expect(child.manifest.parentProjectId).toBe(opened.project.manifest.projectId);
+    expect(child.mindmap.uid).toBe("topic");
+    expect(child.mindmap.text).toBe("Topic");
+    expect(child.mindmap.linkedProjectId).toBeUndefined();
+    expect(child.mindmap.children[0]?.text).toBe("Detail");
+    await store.switchProject(opened.project.manifest.projectId);
+    await unlink(path.join(root, "projects", opened.project.manifest.projectId, "mindmap.json"));
+    const recovered = await new WorkspaceStore(root).load();
+    expect(recovered.project.mindmap.children[0]?.linkedProjectId).toBe(child.manifest.projectId);
+  });
+
+  test("links an existing project without replacing its center or branches", async () => {
+    const root = await makeRoot();
+    const store = new WorkspaceStore(root);
+    const opened = await store.initialize("Research", "Main");
+    opened.project.mindmap.children.push({ uid: "entrance", text: "Entrance", children: [] });
+    await store.saveActive(opened.project);
+    const target = await store.createProject("Existing", null);
+    target.mindmap.text = "Existing center";
+    target.mindmap.children.push({ uid: "preserved", text: "Preserved branch", children: [] });
+    await store.saveActive(target);
+    await store.switchProject(opened.project.manifest.projectId);
+    const linked = await store.linkNode("entrance", { kind: "existing", projectId: target.manifest.projectId });
+    expect(linked.project.mindmap.children[0]?.text).toBe("Existing center");
+    expect(linked.project.mindmap.children[0]?.linkedProjectId).toBe(target.manifest.projectId);
+    const loaded = await store.switchProject(target.manifest.projectId);
+    expect(loaded.mindmap).toEqual(target.mindmap);
+    expect(loaded.manifest.parentProjectId).toBe(opened.project.manifest.projectId);
+    await expect(store.linkNode(loaded.mindmap.uid, { kind: "existing", projectId: opened.project.manifest.projectId })).rejects.toThrow("后代");
+  });
   test("initializes a workspace with one portable project", async () => {
     const root = await makeRoot();
     const opened = await new WorkspaceStore(root).initialize("Research", "主项目");

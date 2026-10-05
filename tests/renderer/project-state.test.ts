@@ -81,6 +81,12 @@ describe("candidate to map transaction", () => {
     expect(next.mindmap.children[0]?.children[0]?.text).toBe("Re-extracted");
     expect(next.mindmap.children[0]?.text).toBe("Target");
   });
+
+  test("preserves unchanged branches when renaming a node", () => {
+    const next = updateLinkedNodeTitle(snapshot, "missing-node", "No change");
+    expect(next.mindmap).toBe(snapshot.mindmap);
+    expect(next.mindmap.children[0]).toBe(snapshot.mindmap.children[0]);
+  });
 });
 
 const portableSnapshot: ActiveProjectSnapshot = {

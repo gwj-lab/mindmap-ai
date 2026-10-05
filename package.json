@@ -1,21 +1,48 @@
 {
   "name": "mindmap-ai",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "license": "MIT",
   "description": "Local-first AI answer capture and mind mapping workspace",
+  "packageManager": "pnpm@11.25.0",
   "main": "out/main/index.js",
   "type": "module",
   "scripts": {
     "postinstall": "install-electron --no",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "package:win": "pnpm build && electron-builder --win nsis --x64 --publish never",
     "preview": "electron-vite preview",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "lint": "eslint . --max-warnings=0"
+  },
+  "build": {
+    "appId": "com.mindmapai.desktop",
+    "productName": "Mindmap AI",
+    "electronDist": "node_modules/electron/dist",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      "LICENSE",
+      "THIRD_PARTY_NOTICES.md"
+    ],
+    "artifactName": "Mindmap-AI-${version}-${arch}.${ext}",
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.5.0",
@@ -49,6 +76,7 @@
     "@types/write-file-atomic": "^4.0.3",
     "@vitejs/plugin-react": "^5.1.1",
     "electron": "43.4.0",
+    "electron-builder": "26.15.3",
     "electron-vite": "5.0.0",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",

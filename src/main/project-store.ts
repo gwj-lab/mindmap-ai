@@ -92,6 +92,7 @@ export class ProjectStore {
   readonly #answers: AnswerRepository;
   #writeTail: Promise<void> = Promise.resolve();
   #readOnly = false;
+  #portableFileContents = new Map<string, string>();
 
   constructor(root: string, answers?: AnswerRepository) {
     this.#root = path.resolve(root);
@@ -203,6 +204,7 @@ export class ProjectStore {
   }
 
   async loadPortable(): Promise<ActiveProjectSnapshot> {
+    this.#portableFileContents.clear();
     const stored = JSON.parse(await readFile(path.join(this.#root, "project.json"), "utf8")) as {
       manifest?: unknown;
       state?: unknown;
@@ -226,8 +228,7 @@ export class ProjectStore {
         await this.#writePortableRecoveryReport(recoveryError);
       }
     }
-    const answers = await this.#answers.list();
-    const answerIds = new Set(answers.map((answer) => answer.id));
+    const answerIds = await this.#answers.listIds();
     const linkedAnswerIds = collectPortableAnswerIds(state, mindmap);
     const result: ActiveProjectSnapshot = {
       manifest,
@@ -247,14 +248,15 @@ export class ProjectStore {
     const state = projectStateSchema.parse(snapshot.state);
     return this.#enqueueWrite(async () => {
       await mkdir(this.#root, { recursive: true });
-      await Promise.all([
-        this.#writeJson("project.json", { manifest, state }),
-        this.#writeJson("mindmap.json", mindmap),
-        writeFileAtomic(path.join(this.#root, "map.md"), serializePortableMap(manifest, mindmap), { encoding: "utf8" }),
-        writeFileAtomic(path.join(this.#root, "inbox.md"), serializeTrayIndex("Candidates", state.candidates), { encoding: "utf8" }),
-        writeFileAtomic(path.join(this.#root, "history.md"), serializeHistoryIndex(state), { encoding: "utf8" }),
-        writeFileAtomic(path.join(this.#root, "trash.md"), serializeTrashIndex(state), { encoding: "utf8" })
+      const files = new Map<string, string>([
+        ["project.json", `${JSON.stringify({ manifest, state }, null, 2)}\n`],
+        ["mindmap.json", `${JSON.stringify(mindmap, null, 2)}\n`],
+        ["map.md", serializePortableMap(manifest, mindmap)],
+        ["inbox.md", serializeTrayIndex("Candidates", state.candidates)],
+        ["history.md", serializeHistoryIndex(state)],
+        ["trash.md", serializeTrashIndex(state)]
       ]);
+      await Promise.all([...files].map(([fileName, contents]) => this.#writePortableFile(fileName, contents)));
       return { savedAt: new Date().toISOString() };
     });
   }
@@ -277,6 +279,12 @@ export class ProjectStore {
 
   async #writeJson(fileName: string, value: unknown): Promise<void> {
     await writeFileAtomic(path.join(this.#root, fileName), `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8" });
+  }
+
+  async #writePortableFile(fileName: string, contents: string): Promise<void> {
+    if (this.#portableFileContents.get(fileName) === contents) return;
+    await writeFileAtomic(path.join(this.#root, fileName), contents, { encoding: "utf8" });
+    this.#portableFileContents.set(fileName, contents);
   }
 
   async #writePortableRecoveryReport(error: unknown): Promise<void> {

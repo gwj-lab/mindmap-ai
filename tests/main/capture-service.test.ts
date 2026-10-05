@@ -32,6 +32,29 @@ const payload = {
 };
 
 describe("portable CaptureService", () => {
+  test("uses custom requirements for expanded API capture even with local default titles", async () => {
+    const { store } = await setup("expanded", "local");
+    const api = { extract: vi.fn().mockResolvedValue({ title: "生产流程", subtitles: ["晶圆制备", "光刻"] }) };
+    const settings = {
+      getPublicSettings: vi.fn().mockResolvedValue({ baseUrl: "https://api.example/v1", model: "model", hasApiKey: true }),
+      getApiKey: vi.fn().mockResolvedValue("secret")
+    };
+    const service = new CaptureService(store, { portable: true, titleService: api, settingsStore: settings, expansionPrompt: "半导体的流程有哪些？" });
+    const result = await service.capture(payload);
+    expect(api.extract).toHaveBeenCalledWith(payload.markdown, expect.objectContaining({ expansionPrompt: "半导体的流程有哪些？", mode: "expanded" }));
+    expect(result).toMatchObject({ status: "captured", candidate: { title: "生产流程", children: [{ title: "晶圆制备" }, { title: "光刻" }] } });
+    expect((await store.loadPortable()).state.candidates[0]?.children).toHaveLength(2);
+    expect(result.status === "captured" && result.answer.body).toBe(payload.markdown);
+  });
+
+  test("warns when custom requirements cannot use API and leaves default capture unchanged", async () => {
+    const { store } = await setup("expanded", "local");
+    const result = await new CaptureService(store, { portable: true, expansionPrompt: "半导体的流程有哪些？" }).capture(payload);
+    expect(result).toMatchObject({ status: "captured", apiWarning: "分点要求需要配置 API 密钥，已使用本地规则" });
+    const defaultResult = await new CaptureService(store, { portable: true }).capture(payload);
+    expect(defaultResult).toMatchObject({ status: "captured", candidate: { children: [{ title: "First child" }, { title: "Second child" }] } });
+    expect(defaultResult).not.toHaveProperty("apiWarning");
+  });
   test("acknowledges only after exactly one matching candidate is persisted", async () => {
     const { store } = await setup();
     const acknowledgement = await new CaptureService(store, { portable: true }).capture(payload);

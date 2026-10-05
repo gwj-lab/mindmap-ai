@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
@@ -83,6 +83,27 @@ describe("ProjectStore", () => {
     expect(raw).toMatch(/^---\n/);
     expect(raw).toContain("provider: chatgpt");
     expect(raw).toContain("The result is $$x^2$$.");
+  });
+
+  test("checks linked answer presence from filenames without parsing answer bodies", async () => {
+    const root = await makeRoot();
+    const store = new ProjectStore(root);
+    const project = await store.initializePortable({
+      schemaVersion: 2,
+      projectId: "2cb66115-270c-4107-89e0-f61508c14d2b",
+      parentProjectId: null,
+      name: "Portable",
+      createdAt: "2026-08-18T00:00:00.000Z",
+      updatedAt: "2026-08-18T00:00:00.000Z"
+    });
+    await mkdir(path.join(root, "answers"), { recursive: true });
+    await store.savePortable({
+      ...project,
+      mindmap: { uid: "root", text: "Root", children: [{ uid: "linked", text: "Linked", answerId: "answer-1", children: [] }] }
+    });
+    await writeFile(path.join(root, "answers", "answer-1.md"), "body intentionally omitted from this check");
+
+    await expect(store.loadPortable()).resolves.toMatchObject({ missingAnswerIds: [] });
   });
 
   test("repairs stale candidates and reports linked answers missing on disk", async () => {

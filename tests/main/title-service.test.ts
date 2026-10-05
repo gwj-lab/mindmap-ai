@@ -16,6 +16,23 @@ function compatibleResponse(content: unknown, headers?: HeadersInit): Response {
 }
 
 describe("AI title service", () => {
+  test("sends requirements separately from source material only in expanded mode", async () => {
+    const fetchFn = vi.fn().mockImplementation(async () => compatibleResponse({ title: "半导体生产流程", subtitles: ["晶圆制备", "光刻", "刻蚀"] }));
+    const service = new TitleService(fetchFn);
+    const markdown = "# 半导体\n流程包括晶圆制备、光刻、刻蚀。另有行业现状。";
+    const expansionPrompt = "  半导体的流程有哪些？  ";
+    const result = await service.extract(markdown, { ...options, expansionPrompt });
+    expect(result.subtitles).toEqual(["晶圆制备", "光刻", "刻蚀"]);
+    const request = JSON.parse(String(fetchFn.mock.calls[0]?.[1].body));
+    expect(request.messages).toHaveLength(3);
+    expect(request.messages[1]).toEqual({ role: "user", content: markdown });
+    expect(request.messages[2]).toEqual({ role: "user", content: "用户分点要求（用于拆分上述回答）：\n半导体的流程有哪些？" });
+    expect(request.messages[0].content).toContain("优先按要求选择分析范围");
+    await service.extract(markdown, { ...options, expansionPrompt: " \n " });
+    expect(JSON.parse(String(fetchFn.mock.calls[1]?.[1].body)).messages).toHaveLength(2);
+    await service.extract(markdown, { ...options, mode: "single", expansionPrompt });
+    expect(JSON.parse(String(fetchFn.mock.calls[2]?.[1].body)).messages).toHaveLength(2);
+  });
   test("reports a successful DeepSeek-compatible connection without returning credentials", async () => {
     const fetchFn = vi.fn().mockResolvedValue(compatibleResponse({ title: "连接成功", subtitles: [] }));
     const result = await new TitleService(fetchFn).testConnection({

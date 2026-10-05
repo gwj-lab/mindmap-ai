@@ -69,12 +69,16 @@ export interface MindMapController {
 }
 
 interface MindMapPanelProps {
+  projectId: string;
   data: MindMapNodeData;
   readOnly?: boolean;
   onChange(data: MindMapNodeData): void;
   onCandidateDrop(candidateId: string, targetUid: string): void;
   onHistoryDrop(historyId: string, targetUid: string): void;
   onOpenAnswer(answerId: string, nodeUid: string): void;
+  onOpenProject?(projectId: string): void;
+  onLinkProject?(nodeUid: string, title: string): void;
+  onUnlinkProject?(nodeUid: string): void;
   onRenameNode(nodeUid: string, title: string): void;
   onCreateChild(nodeUid: string): void;
   onCreateSibling(nodeUid: string): void;
@@ -89,6 +93,7 @@ interface ContextMenuState {
   nodeUid: string;
   title: string;
   answerId?: string;
+  linkedProjectId?: string;
   initialRename?: boolean;
   isRoot: boolean;
 }
@@ -132,13 +137,31 @@ function findAtPoint(root: RenderedNode | null, x: number, y: number): RenderedN
   return null;
 }
 
+function indexRenderedNodes(
+  root: RenderedNode | null,
+  result: WeakMap<SVGGraphicsElement, RenderedNode>
+): void {
+  if (!root) return;
+  const stack = [root];
+  while (stack.length) {
+    const node = stack.pop()!;
+    result.set(node.group.node, node);
+    for (const child of node.children) stack.push(child);
+  }
+}
+
 export function MindMapPanel(props: MindMapPanelProps): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MindMap | null>(null);
   const highlightedRef = useRef<RenderedNode | null>(null);
-  const lastExternalData = useRef("");
+  const lastExternalData = useRef(props.data);
+  const lastExternalProjectId = useRef(props.projectId);
+  const applyingExternalData = useRef(false);
   const handlersRef = useRef(props);
   const selectedNodeRef = useRef<RenderedNode | null>(null);
+  const renderedNodeByElement = useRef(new WeakMap<SVGGraphicsElement, RenderedNode>());
+  const dragHitRef = useRef<{ x: number; y: number; node: RenderedNode | null } | null>(null);
+  const dragFrameRef = useRef<number | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 
   useEffect(() => {
@@ -168,12 +191,20 @@ export function MindMapPanel(props: MindMapPanelProps): React.JSX.Element {
       }
     });
     mapRef.current = mindMap;
+    const refreshRenderedNodeIndex = (): void => indexRenderedNodes(
+      mindMap.renderer.root as RenderedNode | null,
+      renderedNodeByElement.current
+    );
+    refreshRenderedNodeIndex();
+    mindMap.on("node_tree_render_end", refreshRenderedNodeIndex);
     const selection = installFlushableSelectionCheck(mindMap);
-    lastExternalData.current = JSON.stringify(handlersRef.current.data);
+    lastExternalData.current = handlersRef.current.data;
+    lastExternalProjectId.current = handlersRef.current.projectId;
 
     mindMap.on("data_change", (raw) => {
+      if (applyingExternalData.current) return;
       const converted = fromMindMapLibraryNode(raw as MindMapLibraryNode);
-      lastExternalData.current = JSON.stringify(converted);
+      lastExternalData.current = converted;
       handlersRef.current.onChange(converted);
     });
     mindMap.on("node_active", (rawNode, rawList) => {
@@ -204,16 +235,19 @@ export function MindMapPanel(props: MindMapPanelProps): React.JSX.Element {
         nodeUid: node.uid,
         title: String(data.text ?? ""),
         isRoot: node.uid === mindMap.renderer.root?.uid,
-        ...(typeof data.answerId === "string" ? { answerId: data.answerId } : {})
+        ...(typeof data.answerId === "string" ? { answerId: data.answerId } : {}),
+        ...(typeof data.linkedProjectId === "string" ? { linkedProjectId: data.linkedProjectId } : {})
       });
     });
     mindMap.on("node_dblclick", (rawNode, event) => {
       const node = rawNode as RenderedNode;
       const answerId = node.nodeData.data.answerId;
-      if (typeof answerId === "string") {
+      const projectId = node.nodeData.data.linkedProjectId;
+      if (typeof projectId === "string" || typeof answerId === "string") {
         (event as MouseEvent | undefined)?.preventDefault();
         mindMap.renderer.textEdit?.hideEditTextBox();
-        handlersRef.current.onOpenAnswer(answerId, node.uid);
+        if (typeof projectId === "string") handlersRef.current.onOpenProject?.(projectId);
+        else handlersRef.current.onOpenAnswer(answerId as string, node.uid);
       }
     });
 
@@ -248,6 +282,7 @@ export function MindMapPanel(props: MindMapPanelProps): React.JSX.Element {
         title: String(data.text ?? ""),
         isRoot: node.uid === mindMap.renderer.root?.uid,
         ...(typeof data.answerId === "string" ? { answerId: data.answerId } : {}),
+        ...(typeof data.linkedProjectId === "string" ? { linkedProjectId: data.linkedProjectId } : {}),
         initialRename: true
       });
     };
@@ -276,10 +311,19 @@ export function MindMapPanel(props: MindMapPanelProps): React.JSX.Element {
       applyTheme: (name) => mindMap.setThemeConfig(THEMES[name] as unknown as Record<string, unknown>)
     };
     handlersRef.current.onController(controller);
-    const resizeObserver = new ResizeObserver(() => mindMap.resize());
+    let resizeFrame: number | null = null;
+    const resizeObserver = new ResizeObserver(() => {
+      if (resizeFrame !== null) return;
+      resizeFrame = window.requestAnimationFrame(() => {
+        resizeFrame = null;
+        mindMap.resize();
+      });
+    });
     resizeObserver.observe(host);
     return () => {
       resizeObserver.disconnect();
+      if (resizeFrame !== null) window.cancelAnimationFrame(resizeFrame);
+      mindMap.off("node_tree_render_end", refreshRenderedNodeIndex);
       host.removeEventListener("mouseup", flushMarqueeSelection, true);
       selection?.checkInNodes.cancel();
       handlersRef.current.onController(null);
@@ -289,16 +333,38 @@ export function MindMapPanel(props: MindMapPanelProps): React.JSX.Element {
   }, []);
 
   useEffect(() => {
-    const serialized = JSON.stringify(props.data);
-    if (mapRef.current && serialized !== lastExternalData.current) {
-      lastExternalData.current = serialized;
-      mapRef.current.setData(toMindMapLibraryNode(props.data));
+    const projectChanged = props.projectId !== lastExternalProjectId.current;
+    if (mapRef.current && (projectChanged || props.data !== lastExternalData.current)) {
+      lastExternalProjectId.current = props.projectId;
+      lastExternalData.current = props.data;
+      const data = toMindMapLibraryNode(props.data);
+      if (projectChanged) mapRef.current.setData(data);
+      else {
+        applyingExternalData.current = true;
+        try {
+          mapRef.current.updateData(data);
+        } finally {
+          applyingExternalData.current = false;
+        }
+      }
     }
-  }, [props.data]);
+  }, [props.data, props.projectId]);
 
   const clearHighlight = (): void => {
+    if (dragFrameRef.current !== null) {
+      window.cancelAnimationFrame(dragFrameRef.current);
+      dragFrameRef.current = null;
+    }
+    dragHitRef.current = null;
     highlightedRef.current?.closeHighlight();
     highlightedRef.current = null;
+  };
+
+  const updateHighlight = (node: RenderedNode | null): void => {
+    if (node === highlightedRef.current) return;
+    clearHighlight();
+    node?.highlight();
+    highlightedRef.current = node;
   };
 
   const command = (name: string): void => {
@@ -337,12 +403,22 @@ export function MindMapPanel(props: MindMapPanelProps): React.JSX.Element {
           const isHistory = event.dataTransfer.types.includes("application/x-mindmap-history");
           if (!isCandidate && !isHistory) return;
           event.preventDefault();
-          const node = findAtPoint(mapRef.current?.renderer.root as RenderedNode | null, event.clientX, event.clientY);
-          if (node !== highlightedRef.current) {
-            clearHighlight();
-            node?.highlight();
-            highlightedRef.current = node;
+          const target = event.target instanceof Element ? event.target.closest(".smm-node") : null;
+          const directNode = target ? renderedNodeByElement.current.get(target as SVGGraphicsElement) ?? null : null;
+          if (directNode) updateHighlight(directNode);
+          else {
+            dragHitRef.current = { x: event.clientX, y: event.clientY, node: null };
+            if (dragFrameRef.current === null) {
+              dragFrameRef.current = window.requestAnimationFrame(() => {
+                dragFrameRef.current = null;
+                const point = dragHitRef.current;
+                if (!point) return;
+                point.node = findAtPoint(mapRef.current?.renderer.root as RenderedNode | null, point.x, point.y);
+                updateHighlight(point.node);
+              });
+            }
           }
+          const node = directNode ?? (dragHitRef.current?.x === event.clientX && dragHitRef.current?.y === event.clientY ? dragHitRef.current.node : highlightedRef.current);
           event.dataTransfer.dropEffect = node ? "move" : "none";
         }}
         onDragLeave={(event) => {
@@ -350,9 +426,13 @@ export function MindMapPanel(props: MindMapPanelProps): React.JSX.Element {
         }}
         onDrop={(event) => {
           event.preventDefault();
+          const root = mapRef.current?.renderer.root as RenderedNode | null;
+          const target = event.target instanceof Element ? event.target.closest(".smm-node") : null;
+          const directNode = target ? renderedNodeByElement.current.get(target as SVGGraphicsElement) ?? null : null;
+          const hitNode = directNode ?? findAtPoint(root, event.clientX, event.clientY) ?? highlightedRef.current;
           const candidateId = event.dataTransfer.getData("application/x-mindmap-candidate");
           const historyId = event.dataTransfer.getData("application/x-mindmap-history");
-          const targetUid = highlightedRef.current?.uid;
+          const targetUid = hitNode?.uid;
           clearHighlight();
           window.mindmapAI?.ai.endLocalDrag();
           if (candidateId && targetUid) props.onCandidateDrop(candidateId, targetUid);
@@ -369,6 +449,8 @@ export function MindMapPanel(props: MindMapPanelProps): React.JSX.Element {
           onMoveToHistory={props.onMoveToHistory}
           onDelete={(nodeUid) => props.onDeleteNodes([nodeUid])}
           onOpenAnswer={props.onOpenAnswer}
+          onLinkProject={props.readOnly ? undefined : props.onLinkProject}
+          onUnlinkProject={props.readOnly ? undefined : props.onUnlinkProject}
         />
       )}
     </section>

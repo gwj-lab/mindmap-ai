@@ -58,9 +58,19 @@ export async function scanWorkspaceAnswerReferences(
     ...workspace.projects.map((project) => ({ projectId: project.projectId, area: "projects" as const })),
     ...workspace.projectTrash.map((project) => ({ projectId: project.projectId, area: ".trash/projects" as const }))
   ];
-  for (const record of records) {
-    const answerIds = await readProjectAnswerIds(safeProjectDirectory(root, record.area, record.projectId));
-    for (const answerId of answerIds) {
+  const results: Set<string>[] = new Array(records.length);
+  let nextIndex = 0;
+  const worker = async (): Promise<void> => {
+    while (nextIndex < records.length) {
+      const index = nextIndex++;
+      const record = records[index]!;
+      results[index] = await readProjectAnswerIds(safeProjectDirectory(root, record.area, record.projectId));
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(8, records.length) }, () => worker()));
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index]!;
+    for (const answerId of results[index]!) {
       const projects = references.get(answerId) ?? new Set<string>();
       projects.add(record.projectId);
       references.set(answerId, projects);

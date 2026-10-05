@@ -19,6 +19,8 @@ import type { WorkspaceManifest, WorkspaceProjectRecord } from "../../../shared/
 
 interface ProjectNavigatorProps {
   workspace: WorkspaceManifest;
+  readOnly?: boolean;
+  onReparent?(projectId: string, parentProjectId: string | null): void;
   onSwitch(projectId: string): void;
   onCreate(parentProjectId: string | null): void;
   onRename(projectId: string, name: string): void;
@@ -30,14 +32,21 @@ interface ProjectNavigatorProps {
   onExport?(projectId: string): void;
 }
 
-function childrenOf(workspace: WorkspaceManifest, parentProjectId: string | null): WorkspaceProjectRecord[] {
-  return workspace.projects
-    .filter((project) => project.parentProjectId === parentProjectId)
-    .sort((left, right) => left.order - right.order || left.name.localeCompare(right.name));
-}
-
-function breadcrumb(workspace: WorkspaceManifest): string[] {
+function projectIndexes(workspace: WorkspaceManifest): {
+  byId: Map<string, WorkspaceProjectRecord>;
+  byParent: Map<string | null, WorkspaceProjectRecord[]>;
+  breadcrumb: string[];
+} {
   const byId = new Map(workspace.projects.map((project) => [project.projectId, project]));
+  const byParent = new Map<string | null, WorkspaceProjectRecord[]>();
+  for (const project of workspace.projects) {
+    const children = byParent.get(project.parentProjectId) ?? [];
+    children.push(project);
+    byParent.set(project.parentProjectId, children);
+  }
+  for (const children of byParent.values()) {
+    children.sort((left, right) => left.order - right.order || left.name.localeCompare(right.name));
+  }
   const names: string[] = [];
   const seen = new Set<string>();
   let projectId = workspace.activeProjectId;
@@ -48,11 +57,13 @@ function breadcrumb(workspace: WorkspaceManifest): string[] {
     names.unshift(project.name);
     projectId = project.parentProjectId;
   }
-  return names;
+  return { byId, byParent, breadcrumb: names };
 }
 
 export function ProjectNavigator({
   workspace,
+  readOnly = false,
+  onReparent,
   onSwitch,
   onCreate,
   onRename,
@@ -67,7 +78,43 @@ export function ProjectNavigator({
   const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(() => new Set());
   const [menuProjectId, setMenuProjectId] = useState<string | null>(null);
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
-  const pathNames = useMemo(() => breadcrumb(workspace), [workspace]);
+  const [draggingProjectId, setDraggingProjectId] = useState<string | null>(null);
+  const [dropParentId, setDropParentId] = useState<string | null | undefined>(undefined);
+  const { byId, byParent, breadcrumb: pathNames } = useMemo(() => projectIndexes(workspace), [workspace]);
+  const childrenOf = (parentId: string | null): WorkspaceProjectRecord[] => byParent.get(parentId) ?? [];
+  const canDrop = (projectId: string, parentId: string | null): boolean => {
+    const source = byId.get(projectId);
+    if (!source || readOnly || !onReparent || source.parentProjectId === parentId) return false;
+    const seen = new Set<string>();
+    let ancestor = parentId;
+    while (ancestor) {
+      if (ancestor === projectId || seen.has(ancestor)) return false;
+      seen.add(ancestor);
+      const record = byId.get(ancestor);
+      if (!record) return false;
+      ancestor = record.parentProjectId;
+    }
+    return true;
+  };
+  const dragOver = (event: React.DragEvent, parentId: string | null): void => {
+    if (!draggingProjectId || !canDrop(draggingProjectId, parentId)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "move";
+    setDropParentId(parentId);
+  };
+  const drop = (event: React.DragEvent, parentId: string | null): void => {
+    event.preventDefault();
+    event.stopPropagation();
+    const projectId = event.dataTransfer.getData("application/x-mindmap-project");
+    if (canDrop(projectId, parentId)) {
+      onReparent?.(projectId, parentId);
+      if (parentId) setCollapsedProjects((current) => { const next = new Set(current); next.delete(parentId); return next; });
+    }
+    setDraggingProjectId(null);
+    setDropParentId(undefined);
+    window.mindmapAI?.ai.endLocalDrag();
+  };
 
   const toggleProject = (projectId: string): void => {
     setCollapsedProjects((current) => {
@@ -79,7 +126,7 @@ export function ProjectNavigator({
   };
 
   const renderProject = (project: WorkspaceProjectRecord, depth: number): React.ReactNode => {
-    const children = childrenOf(workspace, project.projectId);
+    const children = childrenOf(project.projectId);
     const collapsed = collapsedProjects.has(project.projectId);
     const editing = editingProjectId === project.projectId;
     return (
@@ -91,7 +138,20 @@ export function ProjectNavigator({
         aria-expanded={children.length > 0 ? !collapsed : undefined}
       >
         <div
-          className={`project-row ${workspace.activeProjectId === project.projectId ? "project-row--active" : ""}`}
+          className={`project-row ${workspace.activeProjectId === project.projectId ? "project-row--active" : ""} ${dropParentId === project.projectId ? "project-row--drop" : ""}`}
+          data-project-id={project.projectId}
+          draggable={!readOnly && !editing && Boolean(onReparent)}
+          onDragStart={(event) => {
+            event.dataTransfer.setData("application/x-mindmap-project", project.projectId);
+            event.dataTransfer.effectAllowed = "move";
+            setDraggingProjectId(project.projectId);
+            setMenuProjectId(null);
+            window.mindmapAI?.ai.beginLocalDrag();
+          }}
+          onDragEnd={() => { setDraggingProjectId(null); setDropParentId(undefined); window.mindmapAI?.ai.endLocalDrag(); }}
+          onDragOver={(event) => dragOver(event, project.projectId)}
+          onDragLeave={() => setDropParentId(undefined)}
+          onDrop={(event) => drop(event, project.projectId)}
           style={{ paddingInlineStart: `${8 + depth * 16}px` }}
         >
           {children.length > 0 ? (
@@ -167,13 +227,14 @@ export function ProjectNavigator({
 
   return (
     <aside className="project-navigator">
-      <header>
+      <header aria-label="移为主项目" className={dropParentId === null ? "project-root-drop" : undefined} onDragOver={(event) => dragOver(event, null)} onDrop={(event) => drop(event, null)}>
         <div><span>工作区</span><strong>{workspace.name}</strong></div>
         <button aria-label="折叠项目导航" onClick={() => setCollapsedRail(true)}><PanelLeftClose size={17} /></button>
       </header>
       <div className="project-breadcrumb" aria-label="项目路径">{pathNames.join(" / ") || "未选择项目"}</div>
+      {draggingProjectId && <div className="project-drag-hint">拖入项目成为子项目；拖到工作区标题成为主项目</div>}
       <ul className="project-tree" role="tree" aria-label="项目">
-        {childrenOf(workspace, null).map((project) => renderProject(project, 0))}
+        {childrenOf(null).map((project) => renderProject(project, 0))}
         {workspace.projectTrash.length > 0 && (
           <li className="project-trash-section" role="none">
             <span>项目垃圾箱 · {workspace.projectTrash.length}</span>

@@ -21,22 +21,33 @@ export function AiPanel({
 }: AiPanelProps): React.JSX.Element {
   const surfaceRef = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
+  const [expansionPrompt, setExpansionPrompt] = useState("");
 
   useEffect(() => {
     const surface = surfaceRef.current;
     if (!surface) return;
+    let previousVisible: boolean | null = null;
+    let previousBounds = "";
     const update = (): void => {
       const rect = surface.getBoundingClientRect();
       const nextVisible = rect.width > 8 && rect.height > 8 && getComputedStyle(surface).visibility !== "hidden";
-      setVisible(nextVisible);
-      window.mindmapAI.ai.setPanelVisible(nextVisible);
+      if (nextVisible !== previousVisible) {
+        previousVisible = nextVisible;
+        setVisible(nextVisible);
+        window.mindmapAI.ai.setPanelVisible(nextVisible);
+      }
       if (nextVisible) {
-        window.mindmapAI.ai.setPanelBounds({
+        const bounds = {
           x: Math.round(rect.x),
           y: Math.round(rect.y),
           width: Math.round(rect.width),
           height: Math.round(rect.height)
-        });
+        };
+        const key = `${bounds.x},${bounds.y},${bounds.width},${bounds.height}`;
+        if (key !== previousBounds) {
+          previousBounds = key;
+          window.mindmapAI.ai.setPanelBounds(bounds);
+        }
       }
     };
     const resize = new ResizeObserver(update);
@@ -49,7 +60,7 @@ export function AiPanel({
       resize.disconnect();
       intersection.disconnect();
       window.removeEventListener("resize", update);
-      window.mindmapAI.ai.setPanelVisible(false);
+      if (previousVisible !== false) window.mindmapAI.ai.setPanelVisible(false);
     };
   }, []);
 
@@ -57,8 +68,13 @@ export function AiPanel({
     window.mindmapAI.ai.setHoverCapture(autoHoverCapture);
   }, [autoHoverCapture]);
 
+  useEffect(() => {
+    window.mindmapAI.ai.setExpansionPrompt(captureMode === "expanded" && !readOnly ? expansionPrompt : "");
+    return () => window.mindmapAI.ai.setExpansionPrompt("");
+  }, [captureMode, expansionPrompt, readOnly]);
+
   return (
-    <section className="ai-panel">
+    <section className={`ai-panel${captureMode === "expanded" ? " ai-panel-expanded" : ""}`}>
       <div className="ai-toolbar">
         <span className="provider-state"><i className={visible ? "online" : ""} />ChatGPT 网页端</span>
         <span className="security-chip"><ShieldCheck size={13} />隔离</span>
@@ -81,6 +97,21 @@ export function AiPanel({
           捕获最新
         </button>
       </div>
+      {captureMode === "expanded" && (
+        <label className="expansion-prompt">
+          <span>分点要求（可选）</span>
+          <textarea
+            aria-label="分点要求（可选）"
+            placeholder="例如：半导体的流程有哪些？"
+            value={expansionPrompt}
+            maxLength={4000}
+            rows={2}
+            disabled={readOnly}
+            onChange={(event) => setExpansionPrompt(event.currentTarget.value)}
+          />
+          <small>留空自动拆分；填写后按要求调用 API。捕获最新、点选和悬停双击均适用，需先配置 API 密钥。</small>
+        </label>
+      )}
       <div ref={surfaceRef} className="ai-surface">
         <div className="ai-placeholder">
           <div className="loading-ring" />

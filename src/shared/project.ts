@@ -32,6 +32,7 @@ const recursiveMindMapNodeSchema: z.ZodType<MindMapNodeData> = z.lazy(() => z.ob
   uid: z.string().min(1).max(128),
   text: z.string().max(500),
   answerId: z.string().max(128).optional(),
+  linkedProjectId: z.string().uuid().optional(),
   children: z.array(recursiveMindMapNodeSchema)
 }).passthrough()) as z.ZodType<MindMapNodeData>;
 

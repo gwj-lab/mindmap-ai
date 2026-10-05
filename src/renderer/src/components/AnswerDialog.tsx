@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { markdown } from "@codemirror/lang-markdown";
 import { Edit3, Eye, RefreshCw, Save, X } from "lucide-react";
@@ -14,13 +14,22 @@ interface AnswerDialogProps {
   onRetitle(nodeUid: string, title: string): void;
 }
 
-export function AnswerDialog(props: AnswerDialogProps): React.JSX.Element {
+export const AnswerDialog = memo(function AnswerDialog(props: AnswerDialogProps): React.JSX.Element {
   const [answer, setAnswer] = useState<AnswerDocument | null>(null);
   const [body, setBody] = useState("");
   const [mode, setMode] = useState<"preview" | "edit">("preview");
   const [dirty, setDirty] = useState(false);
   const [position, setPosition] = useState({ x: 72, y: 78 });
   const dragRef = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
+  const pendingPosition = useRef<{ x: number; y: number } | null>(null);
+  const animationFrame = useRef<number | null>(null);
+  const editorExtensions = useMemo(() => [markdown()], []);
+  const [previewBody, setPreviewBody] = useState("");
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setPreviewBody(body), mode === "preview" ? 0 : 150);
+    return () => window.clearTimeout(timer);
+  }, [body, mode]);
 
   useEffect(() => {
     let active = true;
@@ -36,12 +45,27 @@ export function AnswerDialog(props: AnswerDialogProps): React.JSX.Element {
     const move = (event: PointerEvent): void => {
       const drag = dragRef.current;
       if (!drag) return;
-      setPosition({ x: Math.max(8, drag.left + event.clientX - drag.x), y: Math.max(58, drag.top + event.clientY - drag.y) });
+      pendingPosition.current = { x: Math.max(8, drag.left + event.clientX - drag.x), y: Math.max(58, drag.top + event.clientY - drag.y) };
+      if (animationFrame.current === null) {
+        animationFrame.current = window.requestAnimationFrame(() => {
+          animationFrame.current = null;
+          if (pendingPosition.current) setPosition(pendingPosition.current);
+        });
+      }
     };
-    const up = (): void => { dragRef.current = null; };
+    const up = (): void => {
+      dragRef.current = null;
+      if (animationFrame.current !== null) {
+        window.cancelAnimationFrame(animationFrame.current);
+        animationFrame.current = null;
+      }
+      if (pendingPosition.current) setPosition(pendingPosition.current);
+      pendingPosition.current = null;
+    };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
     return () => {
+      if (animationFrame.current !== null) window.cancelAnimationFrame(animationFrame.current);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
@@ -93,13 +117,13 @@ export function AnswerDialog(props: AnswerDialogProps): React.JSX.Element {
             <CodeMirror
               value={body}
               height="100%"
-              extensions={[markdown()]}
+              extensions={editorExtensions}
               onChange={(value) => { setBody(value); setDirty(value !== answer?.body); }}
               basicSetup={{ lineNumbers: true, foldGutter: true, highlightActiveLine: true }}
             />
           </div>
         )}
-        <MarkdownPreview body={body} />
+        <MarkdownPreview body={mode === "preview" ? body : previewBody} />
       </div>
       <footer>
         <span>{answer?.metadata.provider ?? "chatgpt"}</span>
@@ -107,4 +131,4 @@ export function AnswerDialog(props: AnswerDialogProps): React.JSX.Element {
       </footer>
     </aside>
   );
-}
+});

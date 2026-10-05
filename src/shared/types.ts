@@ -34,6 +34,7 @@ export interface MindMapNodeData {
   uid: string;
   text: string;
   answerId?: string;
+  linkedProjectId?: string;
   children: MindMapNodeData[];
   [key: string]: unknown;
 }
@@ -54,6 +55,8 @@ export interface WorkspaceProjectRecord {
   createdAt: string;
   updatedAt: string;
 }
+
+export type NodeProjectTarget = { kind: "create"; name: string } | { kind: "existing"; projectId: string };
 
 export interface TrashedProjectRecord extends WorkspaceProjectRecord {
   previousParentProjectId: string | null;
@@ -243,6 +246,8 @@ export interface DesktopApi {
     readAnswer(answerId: string): Promise<AnswerDocument | null>;
     writeAnswer(answer: AnswerDocument): Promise<SaveResult>;
     createNested(name: string, parentProjectId: string | null): Promise<ActiveProjectSnapshot>;
+    reparent(projectId: string, parentProjectId: string | null): Promise<WorkspaceOpenResult>;
+    linkNode(nodeUid: string, target: NodeProjectTarget): Promise<WorkspaceOpenResult>;
     switch(projectId: string): Promise<ActiveProjectSnapshot>;
     rename(projectId: string, name: string): Promise<WorkspaceManifest>;
     saveActive(snapshot: ActiveProjectSnapshot): Promise<SaveResult>;
@@ -258,6 +263,7 @@ export interface DesktopApi {
     captureLatest(): void;
     pickAnswer(): void;
     setHoverCapture(enabled: boolean): void;
+    setExpansionPrompt(prompt: string): void;
     beginLocalDrag(): void;
     endLocalDrag(): void;
     onAnswerCaptured(listener: (acknowledgement: Extract<CaptureAcknowledgement, { status: "captured" }>) => void): () => void;

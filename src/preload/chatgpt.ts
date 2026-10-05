@@ -1,6 +1,6 @@
 import { ipcRenderer } from "electron";
 import type { CapturedAnswerPayload, CaptureAcknowledgement } from "../shared/types.js";
-import { CaptureDelivery, extractAnswerFromTarget, extractLatestAnswer, extractSelectedAnswer } from "./chatgpt-adapter.js";
+import { CaptureDelivery, extractAnswerFromTarget, extractLatestAnswer, extractSelectedAnswer, findAssistantMessage } from "./chatgpt-adapter.js";
 import { HoverCaptureController } from "./hover-capture.js";
 
 const IPC = {
@@ -42,10 +42,7 @@ function activatePicker(): void {
   `;
   document.head.append(style);
   let target: Element | null = null;
-  const findTarget = (eventTarget: EventTarget | null): Element | null =>
-    eventTarget instanceof Element
-      ? eventTarget.closest('[data-message-author-role="assistant"], article, main section')
-      : null;
+  const findTarget = (eventTarget: EventTarget | null): Element | null => findAssistantMessage(eventTarget);
   const onMove = (event: MouseEvent): void => {
     target?.classList.remove("mindmap-ai-pick-target");
     target = findTarget(event.target);
@@ -65,7 +62,13 @@ function activatePicker(): void {
     const selected = findTarget(event.target);
     cleanup();
     if (!selected) return;
-    void extractSelectedAnswer(selected.querySelector(".markdown, [data-message-content]") ?? selected, location.href, selected)
+    void extractSelectedAnswer(
+      selected.querySelector(
+        "[data-selected-text-overlay-target][data-markdown-text-style], [data-markdown-text-style], .markdown, [data-message-content], [class*='markdown']"
+      ) ?? selected,
+      location.href,
+      selected
+    )
       .then(emitCapture)
       .catch((error: unknown) => ipcRenderer.send(
         IPC.aiAdapterErrorFromPage,

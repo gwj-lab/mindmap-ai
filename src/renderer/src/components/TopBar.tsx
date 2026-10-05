@@ -1,10 +1,9 @@
 import { FolderOpen, LayoutDashboard, Plus, Save, Sparkles, SwitchCamera } from "lucide-react";
-import type { SaveStatus } from "../state/use-project.js";
+import { useProject, type SaveStatus } from "../state/use-project.js";
 
 interface TopBarProps {
   projectName?: string;
   readOnly?: boolean;
-  saveStatus: SaveStatus;
   onCreate(): void;
   onOpen(): void;
   onSwitchWorkspace(): void;
@@ -21,6 +20,7 @@ const labels: Record<SaveStatus, string> = {
 };
 
 export function TopBar(props: TopBarProps): React.JSX.Element {
+  const saveStatus = useProject((state) => state.saveStatus);
   return (
     <header className="topbar">
       <div className="brand">
@@ -38,8 +38,8 @@ export function TopBar(props: TopBarProps): React.JSX.Element {
         <span className="action-divider" />
         <button onClick={props.onResetLayout} disabled={!props.projectName || props.readOnly}><LayoutDashboard size={16} />恢复布局</button>
       </nav>
-      <div className={`save-state save-state--${props.saveStatus}`}>
-        <i />{props.readOnly ? "只读项目" : labels[props.saveStatus]}
+      <div className={`save-state save-state--${saveStatus}`}>
+        <i />{props.readOnly ? "只读项目" : labels[saveStatus]}
       </div>
     </header>
   );

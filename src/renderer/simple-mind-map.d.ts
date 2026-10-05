@@ -31,6 +31,7 @@ declare module "simple-mind-map" {
     off(event: string, listener: (...args: unknown[]) => void): void;
     execCommand(command: string, ...args: unknown[]): void;
     setData(data: LibraryData): void;
+    updateData(data: LibraryData): void;
     setThemeConfig(config: Record<string, unknown>): void;
     resize(): void;
     destroy(): void;

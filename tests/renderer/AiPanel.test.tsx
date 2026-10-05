@@ -8,7 +8,7 @@ import { AiPanel } from "../../src/renderer/src/components/AiPanel.js";
 describe("AI panel capture controls", () => {
   const ai = {
     setPanelBounds: vi.fn(), setPanelVisible: vi.fn(), captureLatest: vi.fn(), pickAnswer: vi.fn(),
-    setHoverCapture: vi.fn(), beginLocalDrag: vi.fn(), endLocalDrag: vi.fn()
+    setHoverCapture: vi.fn(), setExpansionPrompt: vi.fn(), beginLocalDrag: vi.fn(), endLocalDrag: vi.fn()
   };
   beforeEach(() => {
     Object.assign(window, { mindmapAI: { ai } });
@@ -34,6 +34,24 @@ describe("AI panel capture controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "点选回答" }));
     expect(ai.captureLatest).toHaveBeenCalledTimes(1);
     expect(ai.pickAnswer).toHaveBeenCalledTimes(1);
+  });
+
+  test("allows optional splitting requirements and clears them in single mode", () => {
+    const props = { autoHoverCapture: true, onCaptureModeChange: vi.fn(), onAutoHoverCaptureChange: vi.fn(), onOpenSettings: vi.fn() };
+    const view = render(<AiPanel {...props} captureMode="expanded" />);
+    const input = screen.getByRole("textbox", { name: "分点要求（可选）" });
+    expect(input).toHaveValue("");
+    fireEvent.change(input, { target: { value: "半导体的流程有哪些？" } });
+    expect(ai.setExpansionPrompt).toHaveBeenLastCalledWith("半导体的流程有哪些？");
+    fireEvent.click(screen.getByRole("button", { name: "捕获最新回答" }));
+    expect(ai.captureLatest).toHaveBeenCalledTimes(1);
+    view.rerender(<AiPanel {...props} captureMode="single" />);
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(ai.setExpansionPrompt).toHaveBeenLastCalledWith("");
+    view.rerender(<AiPanel {...props} captureMode="expanded" />);
+    expect(screen.getByRole("textbox")).toHaveValue("半导体的流程有哪些？");
+    view.unmount();
+    expect(ai.setExpansionPrompt).toHaveBeenLastCalledWith("");
   });
 
   test("forwards the settings shortcut instead of owning another settings surface", () => {

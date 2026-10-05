@@ -19,6 +19,8 @@ import {
   projectIdRequestSchema,
   projectPermanentDeleteRequestSchema,
   projectRenameRequestSchema,
+  projectReparentRequestSchema,
+  projectLinkNodeRequestSchema,
   recentWorkspaceIdRequestSchema,
   publicSettingsUpdateRequestSchema
 } from "../shared/ipc.js";
@@ -33,6 +35,7 @@ let activeWorkspaceStore: WorkspaceStore | null = null;
 let settingsStore: SettingsStore | null = null;
 let titleService: TitleService | null = null;
 let recentWorkspaceStore: RecentWorkspaceStore | null = null;
+let expansionPrompt = "";
 
 function assertLocalSender(event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent): void {
   if (!mainWindow || !isTrustedIpcSender(event.sender, mainWindow.webContents)) throw new Error("Untrusted IPC sender");
@@ -181,6 +184,18 @@ function registerIpc(): void {
     assertLocalSender(event);
     return requireWorkspaceStore().saveActive(snapshot);
   });
+  ipcMain.handle(IPC.workspaceProjectReparent, async (event, rawRequest) => {
+    assertLocalSender(event);
+    const request = projectReparentRequestSchema.parse(rawRequest);
+    const store = requireWorkspaceStore();
+    await store.reparentProject(request.projectId, request.parentProjectId);
+    return store.getOpenResult();
+  });
+  ipcMain.handle(IPC.workspaceProjectLinkNode, async (event, rawRequest) => {
+    assertLocalSender(event);
+    const request = projectLinkNodeRequestSchema.parse(rawRequest);
+    return requireWorkspaceStore().linkNode(request.nodeUid, request.target);
+  });
   ipcMain.handle(IPC.workspaceProjectOpenInExplorer, async (event, rawRequest) => {
     assertLocalSender(event);
     const request = projectIdRequestSchema.parse(rawRequest);
@@ -276,6 +291,11 @@ function registerIpc(): void {
     if (typeof enabled !== "boolean") throw new Error("Invalid hover capture state");
     aiManager?.setHoverCapture(enabled);
   });
+  ipcMain.on(IPC.aiSetExpansionPrompt, (event, prompt: unknown) => {
+    assertLocalSender(event);
+    if (typeof prompt !== "string" || prompt.length > 4000) throw new Error("Invalid expansion prompt");
+    expansionPrompt = prompt.trim();
+  });
   ipcMain.on(IPC.aiBeginLocalDrag, (event) => {
     assertLocalSender(event);
     aiManager?.setDragging(true);
@@ -287,6 +307,7 @@ function registerIpc(): void {
   ipcMain.handle(IPC.aiCapturedFromPage, async (event, rawPayload) => {
     if (!aiManager || event.sender !== aiManager.view.webContents) throw new Error("Untrusted capture sender");
     const acknowledgement = await new CaptureService(requireStore(), {
+      expansionPrompt,
       portable: activeWorkspaceStore !== null,
       ...(settingsStore ? { settingsStore } : {}),
       ...(titleService ? { titleService } : {})

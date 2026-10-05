@@ -7,6 +7,7 @@ export class AiViewManager {
   #visible = true;
   #dragging = false;
   #hoverCaptureEnabled = true;
+  #lastBounds: PanelBounds | null = null;
 
   constructor(private readonly owner: BrowserWindow, preloadPath: string) {
     this.view = new WebContentsView({
@@ -31,6 +32,12 @@ export class AiViewManager {
   }
 
   setBounds(bounds: PanelBounds): void {
+    if (this.#lastBounds
+      && this.#lastBounds.x === bounds.x
+      && this.#lastBounds.y === bounds.y
+      && this.#lastBounds.width === bounds.width
+      && this.#lastBounds.height === bounds.height) return;
+    this.#lastBounds = { ...bounds };
     this.view.setBounds(bounds);
   }
 

@@ -15,12 +15,20 @@ Mindmap AI 是面向 Windows 10/11 的本地优先研究工作台：在隔离的
 
 ## 开发运行
 
-需要 Windows 10/11、Node.js 24+ 和 pnpm 11。当前只交付源码，不生成安装包。
+需要 Windows 10/11、Node.js 24+ 和 pnpm 11。也可以从 GitHub Releases 下载 Windows x64 安装包。
 
 ```powershell
 pnpm install
 pnpm dev
 ```
+
+在 Windows 上构建安装包：
+
+```powershell
+pnpm package:win
+```
+
+安装包生成在 `release/` 目录中。
 
 首次启动选择一个空文件夹创建工作区。以后启动会自动恢复上次成功打开的工作区；顶部“切换工作区”可从最近列表切换，也可打开其他文件夹或新建工作区。ChatGPT 登录保存在 Electron 的 `persist:provider-chatgpt` 会话中，应用不读取账号密码。
 

@@ -6,6 +6,7 @@ import type {
   WorkspaceManifest,
   WorkspaceOpenResult
 } from "../../../shared/types.js";
+import type { NodeProjectTarget } from "../../../shared/types.js";
 
 export type SaveStatus = "idle" | "dirty" | "saving" | "saved" | "error";
 
@@ -30,6 +31,8 @@ interface ProjectState {
   createNestedProject(name: string, parentProjectId: string | null): Promise<void>;
   switchProject(projectId: string): Promise<void>;
   renameProject(projectId: string, name: string): Promise<void>;
+  reparentProject(projectId: string, parentProjectId: string | null): Promise<void>;
+  linkNodeProject(nodeUid: string, target: NodeProjectTarget): Promise<void>;
   openProjectInExplorer(projectId: string): Promise<void>;
   moveProjectToTrash(projectId: string): Promise<void>;
   restoreProject(projectId: string): Promise<void>;
@@ -39,7 +42,8 @@ interface ProjectState {
 }
 
 let switchTail: Promise<void> = Promise.resolve();
-let saveTail: Promise<SaveResult | null> = Promise.resolve(null);
+let savePromise: Promise<SaveResult | null> | null = null;
+let pendingSnapshot: ActiveProjectSnapshot | null = null;
 
 function openedState(result: WorkspaceOpenResult, message: string): Partial<ProjectState> {
   return {
@@ -189,6 +193,37 @@ export const useProject = create<ProjectState>((set, get) => ({
       set({ message: error instanceof Error ? error.message : "项目重命名失败", saveStatus: "error" });
     }
   },
+  reparentProject: async (projectId, parentProjectId) => {
+    const run = async (): Promise<void> => {
+      try {
+        if (get().snapshot?.readOnly) throw new Error("只读项目不能调整层级");
+        if (!await get().saveProject()) throw new Error("保存当前项目失败，未移动项目");
+        const result = await window.mindmapAI.project.reparent(projectId, parentProjectId);
+        set(openedState(result, "项目层级已更新"));
+      } catch (error) {
+        set({ message: error instanceof Error ? error.message : "移动项目失败" });
+      }
+    };
+    const result = switchTail.then(run, run);
+    switchTail = result.then(() => undefined, () => undefined);
+    await result;
+  },
+  linkNodeProject: async (nodeUid, target) => {
+    const run = async (): Promise<void> => {
+      try {
+        if (get().snapshot?.readOnly) throw new Error("只读项目不能关联子项目");
+        if (!await get().saveProject()) throw new Error("保存当前项目失败，未关联子项目");
+        const result = await window.mindmapAI.project.linkNode(nodeUid, target);
+        set(openedState(result, "节点已关联子项目，双击节点即可进入"));
+      } catch (error) {
+        set({ message: error instanceof Error ? error.message : "关联子项目失败" });
+        throw error;
+      }
+    };
+    const result = switchTail.then(run, run);
+    switchTail = result.then(() => undefined, () => undefined);
+    await result;
+  },
   openProjectInExplorer: async (projectId) => {
     try {
       await window.mindmapAI.project.openInExplorer(projectId);
@@ -230,27 +265,40 @@ export const useProject = create<ProjectState>((set, get) => ({
     }
   },
   saveProject: async () => {
-    const snapshot = get().snapshot;
-    if (!snapshot) return null;
-    const run = async (): Promise<SaveResult | null> => {
-      set({ saveStatus: "saving" });
-      try {
-        const result = await window.mindmapAI.project.saveActive(snapshot);
-        set({
-          saveStatus: get().snapshot === snapshot ? "saved" : "dirty",
-          message: get().snapshot === snapshot ? "所有更改已保存" : "检测到新的更改，正在继续保存"
-        });
-        return result;
-      } catch (error) {
-        set({
-          saveStatus: get().snapshot === snapshot ? "error" : "dirty",
-          message: error instanceof Error ? error.message : "保存失败"
-        });
-        return null;
+    const latest = get().snapshot;
+    if (!latest) return null;
+    pendingSnapshot = latest;
+    if (savePromise) return savePromise;
+
+    savePromise = (async (): Promise<SaveResult | null> => {
+      let lastResult: SaveResult | null = null;
+      while (pendingSnapshot) {
+        const snapshot = pendingSnapshot;
+        pendingSnapshot = null;
+        set({ saveStatus: "saving" });
+        try {
+          lastResult = await window.mindmapAI.project.saveActive(snapshot);
+          if (get().snapshot === snapshot) {
+            set({ saveStatus: "saved", message: "所有更改已保存" });
+          } else {
+            pendingSnapshot = get().snapshot;
+            set({ saveStatus: "dirty", message: "检测到新的更改，正在继续保存" });
+          }
+        } catch (error) {
+          if (get().snapshot !== snapshot) {
+            pendingSnapshot = get().snapshot;
+            continue;
+          }
+          set({ saveStatus: "error", message: error instanceof Error ? error.message : "保存失败" });
+          lastResult = null;
+          break;
+        }
       }
-    };
-    const result = saveTail.then(run, run);
-    saveTail = result;
-    return result;
+      return lastResult;
+    })().finally(() => {
+      savePromise = null;
+      pendingSnapshot = null;
+    });
+    return savePromise;
   }
 }));

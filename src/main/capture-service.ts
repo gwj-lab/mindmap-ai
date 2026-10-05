@@ -26,6 +26,7 @@ interface SettingsReader {
 }
 
 interface CaptureServiceOptions {
+  expansionPrompt?: string;
   portable?: boolean;
   titleService?: TitleExtractor;
   settingsStore?: SettingsReader;
@@ -112,18 +113,21 @@ export class CaptureService {
     preferences: UiPreferences,
     fallback: { title: string; subtitles: string[] }
   ): Promise<{ title: string; subtitles: string[]; apiWarning?: string }> {
-    if (preferences.titleSource === "local" || !this.options.titleService || !this.options.settingsStore) return fallback;
+    const expansionPrompt = preferences.captureMode === "expanded" ? this.options.expansionPrompt?.trim() : undefined;
+    const unavailable = expansionPrompt ? { ...fallback, apiWarning: "分点要求需要配置 API 密钥，已使用本地规则" } : fallback;
+    if ((!expansionPrompt && preferences.titleSource === "local") || !this.options.titleService || !this.options.settingsStore) return unavailable;
     try {
       const [settings, apiKey] = await Promise.all([
         this.options.settingsStore.getPublicSettings(),
         this.options.settingsStore.getApiKey()
       ]);
-      if (!settings.hasApiKey || !apiKey) return fallback;
+      if (!settings.hasApiKey || !apiKey) return unavailable;
       const extractionOptions = {
         baseUrl: settings.baseUrl,
         model: settings.model,
         apiKey,
-        mode: preferences.captureMode
+        mode: preferences.captureMode,
+        ...(expansionPrompt ? { expansionPrompt } : {})
       };
       return this.options.titleService.extractWithStatus
         ? await this.options.titleService.extractWithStatus(markdown, extractionOptions)

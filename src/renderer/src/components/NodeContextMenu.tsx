@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FileText, History, Pencil, Plus, Trash2, Workflow } from "lucide-react";
+import { FileText, History, Pencil, Plus, Trash2, Workflow, FolderTree, Unlink } from "lucide-react";
 
 interface NodeContextMenuProps {
   x: number;
@@ -7,6 +7,9 @@ interface NodeContextMenuProps {
   nodeUid: string;
   title: string;
   answerId?: string;
+  linkedProjectId?: string;
+  onLinkProject?(nodeUid: string, title: string): void;
+  onUnlinkProject?(nodeUid: string): void;
   isRoot: boolean;
   initialRename?: boolean;
   onClose(): void;
@@ -21,7 +24,7 @@ interface NodeContextMenuProps {
 export function NodeContextMenu(props: NodeContextMenuProps): React.JSX.Element {
   const [editing, setEditing] = useState(props.initialRename === true);
   const left = Math.max(6, Math.min(props.x, window.innerWidth - 214));
-  const top = Math.max(6, Math.min(props.y, window.innerHeight - 268));
+  const top = Math.max(6, Math.min(props.y, window.innerHeight - 340));
   const { onClose } = props;
 
   useEffect(() => {
@@ -83,6 +86,8 @@ export function NodeContextMenu(props: NodeContextMenuProps): React.JSX.Element 
               <FileText size={15} />打开关联回答
             </button>
           )}
+          {props.onLinkProject && <button role="menuitem" onClick={() => { props.onLinkProject?.(props.nodeUid, props.title); props.onClose(); }}><FolderTree size={15} />关联子项目</button>}
+          {props.linkedProjectId && props.onUnlinkProject && <button role="menuitem" onClick={() => { props.onUnlinkProject?.(props.nodeUid); props.onClose(); }}><Unlink size={15} />取消项目关联</button>}
           <span className="node-context-separator" />
           <button role="menuitem" disabled={props.isRoot} onClick={() => { props.onMoveToHistory(props.nodeUid); props.onClose(); }}>
             <History size={15} />移到历史节点

@@ -3,6 +3,7 @@ import type {
   AnswerDocument,
   CandidateNode,
   MindMapNodeData,
+  ProjectTrashEntry,
   ProjectSnapshot
 } from "../../shared/types.js";
 
@@ -123,7 +124,13 @@ export function addCapturedAnswer(snapshot: ProjectSnapshot, answer: AnswerDocum
 
 function renameNode(node: MindMapNodeData, nodeUid: string, title: string): MindMapNodeData {
   if (node.uid === nodeUid) return { ...node, text: title };
-  return { ...node, children: node.children.map((child) => renameNode(child, nodeUid, title)) };
+  let changed = false;
+  const children = node.children.map((child) => {
+    const next = renameNode(child, nodeUid, title);
+    if (next !== child) changed = true;
+    return next;
+  });
+  return changed ? { ...node, children } : node;
 }
 
 export function updateLinkedNodeTitle(
@@ -321,18 +328,25 @@ interface BatchTrashOptions {
   deletedAt?: string;
 }
 
-function topLevelSelectedUids(
-  root: MindMapNodeData,
-  selectedUids: ReadonlySet<string>
-): string[] {
-  const result: string[] = [];
-  const visit = (node: MindMapNodeData, selectedAncestor: boolean): void => {
-    const selected = node.uid !== root.uid && selectedUids.has(node.uid);
-    if (selected && !selectedAncestor) result.push(node.uid);
-    for (const child of node.children) visit(child, selectedAncestor || selected);
-  };
-  visit(root, false);
-  return result;
+function removeSelectedSubtrees(
+  node: MindMapNodeData,
+  selected: ReadonlySet<string>,
+  removed: Array<{ subtree: MindMapNodeData; parentUid: string; index: number }>
+): MindMapNodeData {
+  let changed = false;
+  const children: MindMapNodeData[] = [];
+  for (let index = 0; index < node.children.length; index += 1) {
+    const child = node.children[index]!;
+    if (selected.has(child.uid)) {
+      removed.push({ subtree: child, parentUid: node.uid, index });
+      changed = true;
+      continue;
+    }
+    const next = removeSelectedSubtrees(child, selected, removed);
+    if (next !== child) changed = true;
+    children.push(next);
+  }
+  return changed ? { ...node, children } : node;
 }
 
 export function trashPortableSubtrees(
@@ -340,23 +354,22 @@ export function trashPortableSubtrees(
   nodeUids: readonly string[],
   options: BatchTrashOptions = {}
 ): ActiveProjectSnapshot {
-  const selected = topLevelSelectedUids(snapshot.mindmap, new Set(nodeUids));
-  if (selected.length === 0) return snapshot;
+  const removed: Array<{ subtree: MindMapNodeData; parentUid: string; index: number }> = [];
+  const mindmap = removeSelectedSubtrees(snapshot.mindmap, new Set(nodeUids), removed);
+  if (removed.length === 0) return snapshot;
   const deletedAt = options.deletedAt ?? new Date().toISOString();
-  let current = snapshot;
-  for (let index = selected.length - 1; index >= 0; index -= 1) {
-    current = trashPortableSubtree(
-      current,
-      selected[index]!,
-      options.trashIds?.[index] ?? crypto.randomUUID(),
-      deletedAt
-    );
-  }
-  const previousTrash = snapshot.state.trash;
-  const addedTrash = current.state.trash.slice(previousTrash.length).reverse();
+  const addedTrash: ProjectTrashEntry[] = removed.map((entry, index) => ({
+    kind: "subtree",
+    id: options.trashIds?.[index] ?? crypto.randomUUID(),
+    deletedAt,
+    subtree: entry.subtree,
+    originalParentUid: entry.parentUid,
+    originalIndex: entry.index
+  }));
   return {
-    ...current,
-    state: { ...current.state, trash: [...previousTrash, ...addedTrash] }
+    ...snapshot,
+    mindmap,
+    state: { ...snapshot.state, trash: [...snapshot.state.trash, ...addedTrash] }
   };
 }
 

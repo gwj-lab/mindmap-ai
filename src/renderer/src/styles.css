@@ -78,6 +78,9 @@ button:disabled { opacity: .4; cursor: default; }
 .project-row { position: relative; height: 31px; display: grid; grid-template-columns: 17px 16px minmax(0, 1fr) 26px; align-items: center; gap: 2px; padding-right: 3px; border-radius: 6px; }
 .project-row:hover { background: #e2ebea; }
 .project-row--active { color: #155f57; background: #d9ebe7; box-shadow: inset 2px 0 #1e9d8c; }
+.project-row--drop, .project-navigator header.project-root-drop { background: #c7ebe3; outline: 2px solid #279d89; outline-offset: -2px; }
+.project-row[draggable="true"] { cursor: grab; }
+.project-drag-hint { position: absolute; z-index: 3; left: 8px; right: 8px; bottom: 54px; padding: 6px 12px; border: 1px solid #b6d5cd; border-radius: 6px; color: #4a7771; background: #f0faf7; pointer-events: none; font-size: 10px; line-height: 1.5; }
 .project-disclosure { width: 17px; height: 24px; display: grid; place-items: center; padding: 0; border-radius: 4px; }
 .project-disclosure-spacer { width: 17px; }
 .project-name { min-width: 0; overflow: hidden; padding: 5px 3px; font-size: 10px; font-weight: 600; text-align: left; white-space: nowrap; text-overflow: ellipsis; }
@@ -129,6 +132,11 @@ button:disabled { opacity: .4; cursor: default; }
 .node-context-rename input { width: 100%; height: 29px; padding: 4px 7px; border: 1px solid var(--teal); border-radius: 5px; color: #213f44; background: white; font-size: 10px; }
 
 .ai-panel { height: 100%; display: grid; grid-template-rows: 38px minmax(0, 1fr); background: #eef3f3; }
+.ai-panel-expanded { grid-template-rows: 38px auto minmax(0, 1fr); }
+.expansion-prompt { display: grid; gap: 5px; padding: 8px 12px; border-bottom: 1px solid #cbd7d8; color: #314e53; font-size: 11px; }
+.expansion-prompt textarea { width: 100%; min-height: 44px; max-height: 120px; resize: vertical; padding: 6px 8px; border: 1px solid #b8cdcb; border-radius: 6px; background: white; color: #213f44; font: inherit; }
+.expansion-prompt textarea:focus { outline: 1px solid var(--teal); border-color: var(--teal); }
+.expansion-prompt small { color: #678084; font-size: 10px; line-height: 1.5; }
 .ai-toolbar { display: flex; align-items: center; gap: 7px; padding: 0 8px 0 12px; border-bottom: 1px solid #cbd7d8; background: #eef3f3; }
 .provider-state { display: inline-flex; align-items: center; gap: 7px; margin-right: auto; color: #314e53; font-size: 11px; font-weight: 600; }
 .provider-state i { width: 7px; height: 7px; border-radius: 50%; background: #82989b; }
@@ -212,6 +220,8 @@ button:disabled { opacity: .4; cursor: default; }
 .project-name-dialog form { display: grid; gap: 12px; padding: 16px; }
 .project-name-dialog label { display: grid; gap: 6px; font-size: 10px; font-weight: 600; }
 .project-name-dialog input { height: 34px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; color: #29464b; background: white; }
+.project-name-dialog select { width: 100%; height: 34px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; color: #29464b; background: white; }
+.project-name-dialog form > p { margin: 0; font-size: 12px; line-height: 1.6; }
 .project-name-dialog [role="alert"] { margin: 0; color: var(--danger); font-size: 10px; }
 .project-name-actions { display: flex; justify-content: flex-end; gap: 7px; }
 .project-name-actions button { height: 30px; padding: 0 12px; border: 1px solid var(--line); border-radius: 6px; background: white; }
@@ -296,18 +306,43 @@ kbd { display: inline-block; min-width: 27px; margin-right: 4px; padding: 2px 4p
 .answer-content--edit { grid-template-columns: 1fr 1fr; }
 .answer-editor { min-width: 0; min-height: 0; overflow: auto; border-right: 1px solid #d5dfdf; }
 .answer-editor .cm-editor { height: 100%; font: 12px/1.6 "Cascadia Code", Consolas, monospace; }
-.markdown-preview { min-width: 0; margin: 0; padding: 24px 30px 60px; overflow: auto; color: #273f44; font-size: 13px; line-height: 1.75; }
-.markdown-preview h1, .markdown-preview h2, .markdown-preview h3 { color: #183b40; line-height: 1.35; }
-.markdown-preview h1 { font-size: 24px; }
-.markdown-preview h2 { margin-top: 1.8em; padding-bottom: 6px; border-bottom: 1px solid #d6e0df; font-size: 18px; }
-.markdown-preview h3 { font-size: 15px; }
-.markdown-preview code { padding: 2px 4px; border-radius: 4px; color: #126e63; background: #e5efed; font: 11px "Cascadia Code", Consolas, monospace; }
-.markdown-preview pre { padding: 14px; overflow: auto; border-radius: 7px; background: #192e33; }
-.markdown-preview pre code { padding: 0; color: #d8e8e5; background: transparent; }
-.markdown-preview table { width: 100%; border-collapse: collapse; }
-.markdown-preview th, .markdown-preview td { padding: 7px; border: 1px solid #cbd7d6; text-align: left; }
-.markdown-preview th { background: #e9f0ef; }
-.markdown-preview img { max-width: 100%; height: auto; }
+.markdown-preview { min-width: 0; margin: 0; padding: 24px 32px 60px; overflow: auto; color: #0d0d0d; background: #fff; font-family: system-ui, "Segoe UI", Arial, sans-serif; font-size: 16px; line-height: 1.625; overflow-wrap: break-word; }
+.markdown-preview > :first-child { margin-top: 0; }
+.markdown-preview p { margin: 8px 0 4px; }
+.markdown-preview h1, .markdown-preview h2, .markdown-preview h3, .markdown-preview h4 { margin: 16px 0 4px; color: inherit; font-weight: 600; line-height: 28px; }
+.markdown-preview h1 { font-size: 24px; line-height: 32px; margin-bottom: 8px; }
+.markdown-preview h2 { font-size: 20px; }
+.markdown-preview h3 { font-size: 18px; }
+.markdown-preview h4 { font-size: 16px; line-height: 24px; margin-bottom: 0; }
+.markdown-preview ul, .markdown-preview ol { margin: 0; padding-left: 26px; }
+.markdown-preview li { margin: 0; padding-left: 6px; }
+.markdown-preview li > p { margin: .5em 0; }
+.markdown-preview li > ul, .markdown-preview li > ol { margin-bottom: .5em; }
+.markdown-preview blockquote { margin: 0 0 8px; padding: 8px 0 8px 24px; border-left: 3px solid #dedede; color: inherit; line-height: 24px; }
+.markdown-preview hr { margin: 2em 0; border: 0; border-top: 1px solid #e5e5e5; }
+.markdown-preview a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.markdown-preview code { padding: .15em .35em; border-radius: 4px; color: inherit; background: #ececec; font: .92em ui-monospace, "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+.markdown-preview pre { margin: 1.25em 0; padding: 16px; overflow: auto; border: 1px solid #e3e3e3; border-radius: 12px; background: #f7f7f8; line-height: 1.6; overflow-wrap: normal; }
+.markdown-preview pre code { padding: 0; color: inherit; background: transparent; }
+.markdown-preview .markdown-code-block { margin: 20px 0; border: 1px solid #e3e3e3; border-radius: 20px; overflow: hidden; }
+.markdown-preview .markdown-code-language { min-height: 48px; padding: 12px 20px; font-size: 14px; font-weight: 500; line-height: 24px; }
+.markdown-preview .markdown-code-block pre { margin: 0; padding: 0 20px 12px; border: 0; border-radius: 0; background: transparent; line-height: 20px; }
+.markdown-preview .markdown-code-block pre code { font-size: 12px; line-height: 20px; }
+.markdown-preview .markdown-citation { display: inline-flex; align-items: center; max-width: 240px; padding: 2px 7px; border-radius: 12px; background: #f0f0f0; color: #555; font-size: 9px; font-weight: 500; line-height: 16px; text-decoration: none; vertical-align: middle; }
+.markdown-preview .contains-task-list { list-style: none; padding-left: 0; }
+.markdown-preview .task-list-item input { margin-right: 6px; accent-color: #303030; }
+.markdown-preview .markdown-table-wrap { max-width: 100%; margin: 16px 0; overflow-x: auto; }
+.markdown-preview table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.markdown-preview th, .markdown-preview td { padding: 10px 24px 10px 0; border-bottom: 1px solid #dedede; text-align: left; }
+.markdown-preview th { font-weight: 600; }
+.markdown-preview th { padding-top: 8px; padding-bottom: 8px; line-height: 16px; }
+.markdown-preview [align="center"] { text-align: center; }
+.markdown-preview [align="right"] { text-align: right; }
+/* KaTeX controls its own font metrics, struts and line heights. */
+.markdown-preview .katex { overflow-wrap: normal; }
+.markdown-preview .katex-display { margin: 1.5em 0; padding: .25em 0; overflow-x: auto; overflow-y: hidden; }
+.markdown-preview img { max-width: min(100%, 200px); max-height: 200px; height: auto; margin: 12px 0; object-fit: contain; border-radius: 6px; }
+.markdown-preview p > img { border: 1px solid #e5e5e5; box-shadow: 0 1px 3px #00000012; }
 .markdown-preview a > img { display: inline-block; width: 14px; height: 14px; max-width: 14px; margin: 0 3px; object-fit: contain; vertical-align: -2px; }
 .answer-dialog > footer { display: flex; justify-content: space-between; align-items: center; padding: 0 10px; border-top: 1px solid #d9e1e1; color: #7d9295; background: #eff3f2; font: 8px Consolas, monospace; text-transform: uppercase; }
 

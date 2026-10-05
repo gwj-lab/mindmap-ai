@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import { Layout, Model, type TabNode } from "flexlayout-react";
 import { AlertCircle, CheckCircle2, X } from "lucide-react";
 import { DEFAULT_DOCK_LAYOUT } from "../../shared/layout.js";
@@ -19,17 +19,45 @@ import {
   updatePortableLinkedNodeTitle
 } from "../state/project-state.js";
 import { AiPanel } from "./components/AiPanel.js";
-import { AiSettingsPage } from "./components/AiSettingsPage.js";
-import { AnswerDialog } from "./components/AnswerDialog.js";
 import { EmptyWorkspace } from "./components/EmptyWorkspace.js";
 import { MindMapPanel, type MindMapController } from "./components/MindMapPanel.js";
 import { NodeTray } from "./components/NodeTray.js";
 import { ProjectNavigator } from "./components/ProjectNavigator.js";
 import { ProjectNameDialog } from "./components/ProjectNameDialog.js";
+import { NodeProjectDialog } from "./components/NodeProjectDialog.js";
 import { StylePanel } from "./components/StylePanel.js";
 import { TopBar } from "./components/TopBar.js";
 import { WorkspaceSwitcher } from "./components/WorkspaceSwitcher.js";
 import { useProject } from "./state/use-project.js";
+
+const AiSettingsPage = lazy(() => import("./components/AiSettingsPage.js").then((module) => ({ default: module.AiSettingsPage })));
+const AnswerDialog = lazy(() => import("./components/AnswerDialog.js").then((module) => ({ default: module.AnswerDialog })));
+
+function AutoSave(): null {
+  const saveStatus = useProject((state) => state.saveStatus);
+  const snapshot = useProject((state) => state.snapshot);
+  const saveProject = useProject((state) => state.saveProject);
+  useEffect(() => {
+    if (saveStatus !== "dirty" || !snapshot) return;
+    const timer = window.setTimeout(() => void saveProject(), 700);
+    return () => window.clearTimeout(timer);
+  }, [saveProject, saveStatus, snapshot]);
+  return null;
+}
+
+function ProjectToast(): React.JSX.Element | null {
+  const message = useProject((state) => state.message);
+  const saveStatus = useProject((state) => state.saveStatus);
+  const setMessage = useProject((state) => state.setMessage);
+  if (!message) return null;
+  return (
+    <div className={`toast ${saveStatus === "error" ? "toast--error" : ""}`}>
+      {saveStatus === "error" ? <AlertCircle size={17} /> : <CheckCircle2 size={17} />}
+      <span>{message}</span>
+      <button onClick={() => setMessage("")}><X size={15} /></button>
+    </div>
+  );
+}
 
 interface OpenAnswer {
   answerId: string;
@@ -45,36 +73,35 @@ function createLayoutModel(json: unknown): Model {
 }
 
 export function App(): React.JSX.Element {
-  const {
-    workspace,
-    snapshot,
-    recentWorkspaces,
-    workspaceInitialized,
-    saveStatus,
-    message,
-    setSnapshot,
-    setMessage,
-    initializeWorkspace,
-    switchWorkspace,
-    forgetRecentWorkspace,
-    createWorkspace,
-    openWorkspace,
-    createNestedProject,
-    switchProject,
-    renameProject,
-    openProjectInExplorer,
-    moveProjectToTrash,
-    restoreProject,
-    permanentlyDeleteProject,
-    exportProject,
-    saveProject
-  } = useProject();
+  const workspace = useProject((state) => state.workspace);
+  const snapshot = useProject((state) => state.snapshot);
+  const recentWorkspaces = useProject((state) => state.recentWorkspaces);
+  const workspaceInitialized = useProject((state) => state.workspaceInitialized);
+  const setSnapshot = useProject((state) => state.setSnapshot);
+  const setMessage = useProject((state) => state.setMessage);
+  const initializeWorkspace = useProject((state) => state.initializeWorkspace);
+  const switchWorkspace = useProject((state) => state.switchWorkspace);
+  const forgetRecentWorkspace = useProject((state) => state.forgetRecentWorkspace);
+  const createWorkspace = useProject((state) => state.createWorkspace);
+  const openWorkspace = useProject((state) => state.openWorkspace);
+  const createNestedProject = useProject((state) => state.createNestedProject);
+  const switchProject = useProject((state) => state.switchProject);
+  const renameProject = useProject((state) => state.renameProject);
+  const reparentProject = useProject((state) => state.reparentProject);
+  const linkNodeProject = useProject((state) => state.linkNodeProject);
+  const openProjectInExplorer = useProject((state) => state.openProjectInExplorer);
+  const moveProjectToTrash = useProject((state) => state.moveProjectToTrash);
+  const restoreProject = useProject((state) => state.restoreProject);
+  const permanentlyDeleteProject = useProject((state) => state.permanentlyDeleteProject);
+  const exportProject = useProject((state) => state.exportProject);
+  const saveProject = useProject((state) => state.saveProject);
   const [layoutOverride, setLayoutOverride] = useState<{ projectId: string; model: Model } | null>(null);
   const [controller, setController] = useState<MindMapController | null>(null);
   const [openAnswer, setOpenAnswer] = useState<OpenAnswer | null>(null);
   const [projectCreationParentId, setProjectCreationParentId] = useState<string | null | undefined>(undefined);
   const [workspacePage, setWorkspacePage] = useState<"dock" | "api-settings">("dock");
   const [workspaceSwitcherOpen, setWorkspaceSwitcherOpen] = useState(false);
+  const [projectLinkNode, setProjectLinkNode] = useState<{ uid: string; title: string } | null>(null);
   const activeProjectId = snapshot?.manifest.projectId;
   const selectedMindMapTheme = snapshot?.state.uiPreferences.mindMapTheme ?? "paper";
   const savedDockLayout = snapshot?.state.dockLayout;
@@ -104,12 +131,6 @@ export function App(): React.JSX.Element {
       unsubscribeError();
     };
   }, [setMessage]);
-
-  useEffect(() => {
-    if (saveStatus !== "dirty" || !snapshot) return;
-    const timer = window.setTimeout(() => void saveProject(), 700);
-    return () => window.clearTimeout(timer);
-  }, [saveProject, saveStatus, snapshot]);
 
   useEffect(() => {
     if (controller && activeProjectId) controller.applyTheme(selectedMindMapTheme);
@@ -148,7 +169,19 @@ export function App(): React.JSX.Element {
         return (
           <MindMapPanel
             data={snapshot.mindmap}
+            projectId={snapshot.manifest.projectId}
             readOnly={snapshot.readOnly}
+            onOpenProject={(projectId) => { setOpenAnswer(null); void switchProject(projectId); }}
+            onLinkProject={(uid, title) => setProjectLinkNode({ uid, title })}
+            onUnlinkProject={(nodeUid) => updateSnapshot((current) => {
+              const mindmap = structuredClone(current.mindmap);
+              const visit = (node: MindMapNodeData): void => {
+                if (node.uid === nodeUid) delete node.linkedProjectId;
+                node.children.forEach(visit);
+              };
+              visit(mindmap);
+              return { ...current, mindmap };
+            })}
             onChange={(mindmap: MindMapNodeData) => updateSnapshot((current) => ({ ...current, mindmap }))}
             onCandidateDrop={(candidateId, targetUid) => updateSnapshot((current) => attachPortableCandidate(current, candidateId, targetUid))}
             onHistoryDrop={(historyId, targetUid) => updateSnapshot((current) => restorePortableHistory(current, historyId, targetUid))}
@@ -224,7 +257,7 @@ export function App(): React.JSX.Element {
       default:
         return <div className="unknown-panel">未知模块</div>;
     }
-  }, [controller, snapshot, updateSnapshot]);
+  }, [controller, snapshot, updateSnapshot, switchProject]);
 
   const resetLayout = (): void => {
     if (snapshot?.readOnly) return;
@@ -238,10 +271,10 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="app-shell">
+      <AutoSave />
       <TopBar
         projectName={snapshot?.manifest.name}
         readOnly={snapshot?.readOnly}
-        saveStatus={saveStatus}
         onCreate={() => { setOpenAnswer(null); void createWorkspace(); }}
         onOpen={() => { setOpenAnswer(null); void openWorkspace(); }}
         onSwitchWorkspace={() => setWorkspaceSwitcherOpen(true)}
@@ -258,8 +291,10 @@ export function App(): React.JSX.Element {
       ) : (
         <div className="workspace-frame">
           {workspace && (
-            <ProjectNavigator
+          <ProjectNavigator
               workspace={workspace}
+              readOnly={snapshot?.readOnly}
+              onReparent={(projectId, parentId) => { void reparentProject(projectId, parentId); }}
               onSwitch={(projectId) => { setOpenAnswer(null); void switchProject(projectId); }}
               onCreate={setProjectCreationParentId}
               onOpenApiSettings={() => setWorkspacePage("api-settings")}
@@ -282,14 +317,14 @@ export function App(): React.JSX.Element {
           )}
           <main className="dock-workspace">
             {workspacePage === "api-settings" ? (
-              <AiSettingsPage
+              <Suspense fallback={<div className="workspace-loading">正在加载设置…</div>}><AiSettingsPage
                 titleSource={snapshot.state.uiPreferences.titleSource}
                 onClose={() => setWorkspacePage("dock")}
                 onTitleSourceChange={(titleSource) => updateSnapshot((current) => ({
                   ...current,
                   state: { ...current.state, uiPreferences: { ...current.state.uiPreferences, titleSource } }
                 }))}
-              />
+              /></Suspense>
             ) : (
               <Layout
                 model={model}
@@ -309,12 +344,14 @@ export function App(): React.JSX.Element {
         </div>
       )}
       {openAnswer && snapshot && (
+        <Suspense fallback={<div className="workspace-loading">正在加载回答…</div>}>
         <AnswerDialog
           {...openAnswer}
           readOnly={snapshot.readOnly}
           onClose={() => setOpenAnswer(null)}
           onRetitle={(nodeUid, title) => updateSnapshot((current) => updatePortableLinkedNodeTitle(current, nodeUid, title))}
         />
+        </Suspense>
       )}
       {projectCreationParentId !== undefined && (
         <ProjectNameDialog
@@ -326,6 +363,12 @@ export function App(): React.JSX.Element {
           }}
         />
       )}
+      {projectLinkNode && workspace && <NodeProjectDialog
+        title={projectLinkNode.title}
+        workspace={workspace}
+        onClose={() => setProjectLinkNode(null)}
+        onSubmit={(target) => linkNodeProject(projectLinkNode.uid, target)}
+      />}
       {workspaceSwitcherOpen && (
         <WorkspaceSwitcher
           entries={recentWorkspaces}
@@ -347,13 +390,7 @@ export function App(): React.JSX.Element {
           }}
         />
       )}
-      {message && (
-        <div className={`toast ${saveStatus === "error" ? "toast--error" : ""}`}>
-          {saveStatus === "error" ? <AlertCircle size={17} /> : <CheckCircle2 size={17} />}
-          <span>{message}</span>
-          <button onClick={() => setMessage("")}><X size={15} /></button>
-        </div>
-      )}
+      <ProjectToast />
     </div>
   );
 }

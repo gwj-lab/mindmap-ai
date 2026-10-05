@@ -13,12 +13,14 @@ interface NodeMetadata {
   uid: string;
   text: string;
   answerId?: string;
+  linkedProjectId?: string;
 }
 
 const nodeMetadataSchema = z.object({
   uid: z.string().min(1).max(128),
   text: z.string().min(1).max(4_000),
-  answerId: z.string().regex(localIdPattern).optional()
+  answerId: z.string().regex(localIdPattern).optional(),
+  linkedProjectId: z.string().uuid().optional()
 });
 
 function displayText(text: string): string {
@@ -43,7 +45,8 @@ function metadataFor(node: MindMapNodeData): NodeMetadata {
   return {
     uid: node.uid,
     text: encodeURIComponent(node.text),
-    ...(node.answerId ? { answerId: node.answerId } : {})
+    ...(node.answerId ? { answerId: node.answerId } : {}),
+    ...(node.linkedProjectId ? { linkedProjectId: node.linkedProjectId } : {})
   };
 }
 
@@ -138,6 +141,7 @@ export function parsePortableMap(markdown: string): MindMapNodeData {
       uid: metadata.uid,
       text,
       ...(metadata.answerId ? { answerId: metadata.answerId } : {}),
+      ...(metadata.linkedProjectId ? { linkedProjectId: metadata.linkedProjectId } : {}),
       children: []
     };
     if (depth === 0) {

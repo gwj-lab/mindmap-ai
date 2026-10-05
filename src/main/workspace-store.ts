@@ -5,6 +5,8 @@ import { workspaceManifestSchema } from "../shared/workspace.js";
 import type {
   ActiveProjectManifest,
   ActiveProjectSnapshot,
+  MindMapNodeData,
+  NodeProjectTarget,
   SaveResult,
   TrashedProjectRecord,
   WorkspaceManifest,
@@ -152,20 +154,78 @@ export class WorkspaceStore {
     return project;
   }
 
+  async reparentProject(projectId: string, parentProjectId: string | null): Promise<void> {
+    const manifest = this.#requireManifest();
+    const current = this.#requireProject(projectId);
+    if (parentProjectId) this.#requireProject(parentProjectId);
+    // Validate the complete next hierarchy before touching any project files.
+    const siblings = manifest.projects.filter((project) => project.projectId !== projectId && project.parentProjectId === parentProjectId);
+    const now = new Date().toISOString();
+    const updated = { ...current, parentProjectId, order: Math.max(-1, ...siblings.map((project) => project.order)) + 1, updatedAt: now };
+    const next = workspaceManifestSchema.safeParse({ ...manifest, projects: manifest.projects.map((project) => project.projectId === projectId ? updated : project), updatedAt: now });
+    if (!next.success) throw new Error("不能将项目移入自身或它的后代项目");
+    if (current.parentProjectId === parentProjectId) return;
+    const store = projectId === manifest.activeProjectId ? this.getActiveProjectStore() : this.#storeFor(projectId);
+    const snapshot = await store.loadPortable();
+    if (snapshot.readOnly) throw new Error("只读项目不能调整层级");
+    await store.savePortable({ ...snapshot, manifest: { ...snapshot.manifest, parentProjectId, updatedAt: now } });
+    this.#manifest = next.data;
+    await this.#saveWorkspace();
+  }
+
+  async linkNode(nodeUid: string, target: NodeProjectTarget): Promise<WorkspaceOpenResult> {
+    const parent = await this.getActiveProjectStore().loadPortable();
+    if (parent.readOnly) throw new Error("只读项目不能关联子项目");
+    const find = (node: MindMapNodeData): MindMapNodeData | undefined => {
+      if (node.uid === nodeUid) return node;
+      for (const child of node.children) { const found = find(child); if (found) return found; }
+      return undefined;
+    };
+    const sourceNode = find(parent.mindmap);
+    if (!sourceNode) throw new Error("节点不存在");
+    let child: ActiveProjectSnapshot;
+    if (target.kind === "create") {
+      try {
+        child = await this.createProject(target.name, parent.manifest.projectId);
+        const root = structuredClone(sourceNode);
+        delete root.linkedProjectId;
+        child = { ...child, mindmap: { ...root, isActive: false } };
+        await this.getActiveProjectStore().savePortable(child);
+      } finally {
+        if (this.#requireManifest().activeProjectId !== parent.manifest.projectId) await this.switchProject(parent.manifest.projectId);
+      }
+    } else {
+      this.#requireProject(target.projectId);
+      child = await this.#storeFor(target.projectId).loadPortable();
+      if (child.readOnly) throw new Error("只读项目不能关联为子项目");
+      await this.reparentProject(target.projectId, parent.manifest.projectId);
+    }
+    sourceNode.linkedProjectId = child.manifest.projectId;
+    sourceNode.text = child.mindmap.text;
+    await this.saveActive(parent);
+    return this.getOpenResult();
+  }
+
   async saveActive(snapshot: ActiveProjectSnapshot): Promise<SaveResult> {
     const manifest = this.#requireManifest();
     if (manifest.activeProjectId !== snapshot.manifest.projectId) {
       throw new Error("Cannot save a project that is not active");
     }
     const store = this.#activeProjectStore ?? this.#storeFor(snapshot.manifest.projectId);
-    const result = await store.savePortable(snapshot);
-    const updatedRecord = this.#recordFromManifest(snapshot.manifest, this.#requireProject(snapshot.manifest.projectId).order);
-    this.#manifest = workspaceManifestSchema.parse({
+    const current = this.#requireProject(snapshot.manifest.projectId);
+    // An older renderer snapshot must not undo a sidebar move.
+    const canonicalSnapshot = { ...snapshot, manifest: { ...snapshot.manifest, parentProjectId: current.parentProjectId } };
+    const result = await store.savePortable(canonicalSnapshot);
+    const updatedRecord = this.#recordFromManifest(canonicalSnapshot.manifest, current.order);
+    const nextManifest = workspaceManifestSchema.parse({
       ...manifest,
       projects: manifest.projects.map((project) => project.projectId === updatedRecord.projectId ? updatedRecord : project),
       updatedAt: snapshot.manifest.updatedAt
     });
-    await this.#saveWorkspace();
+    if (JSON.stringify(nextManifest) !== JSON.stringify(manifest)) {
+      this.#manifest = nextManifest;
+      await this.#saveWorkspace();
+    }
     return result;
   }
 

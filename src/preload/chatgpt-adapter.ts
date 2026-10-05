@@ -2,15 +2,20 @@ import { contentHash, htmlToMarkdown } from "../shared/content.js";
 import type { CapturedAnswerPayload, CaptureAcknowledgement } from "../shared/types.js";
 
 const MESSAGE_SELECTOR = [
+  "[data-content-search-unit-key]",
   '[data-message-author-role="assistant"]',
   '[data-author="assistant"]',
   "article[data-testid^='conversation-turn-']"
 ].join(",");
 
 function isAssistant(element: Element): boolean {
-  const role = element.getAttribute("data-message-author-role") ?? element.getAttribute("data-author");
+  const role = element.getAttribute("data-message-author-role")
+    ?? element.getAttribute("data-author")
+    ?? element.getAttribute("data-conversation-role");
   if (role) return role === "assistant";
-  return Boolean(element.querySelector('[data-message-author-role="assistant"]'));
+  return Boolean(element.querySelector(
+    '[data-conversation-role="assistant"], [data-message-author-role="assistant"], [data-author="assistant"]'
+  ));
 }
 
 export function isAssistantMessageStreaming(element: Element): boolean {
@@ -30,7 +35,9 @@ export function findAssistantMessage(target: EventTarget | null): Element | null
 }
 
 function messageContent(message: Element): Element {
-  return message.querySelector(".markdown, [data-message-content], [class*='markdown']") ?? message;
+  return message.querySelector(
+    "[data-selected-text-overlay-target][data-markdown-text-style], [data-markdown-text-style], .markdown, [data-message-content], [class*='markdown']"
+  ) ?? message;
 }
 
 export async function extractAnswerFromTarget(
@@ -61,7 +68,11 @@ export async function extractSelectedAnswer(
   const markdown = htmlToMarkdown(content);
   if (!markdown.trim()) throw new Error("Selected answer is empty");
   const fallbackId = `assistant-${(await contentHash(markdown)).slice(0, 16)}`;
+  const selectionMessageId = messageContainer.matches("[data-chatgpt-selection-message-id]")
+    ? messageContainer.getAttribute("data-chatgpt-selection-message-id")
+    : messageContainer.querySelector("[data-chatgpt-selection-message-id]")?.getAttribute("data-chatgpt-selection-message-id");
   const sourceMessageId = messageContainer.getAttribute("data-message-id")
+    || selectionMessageId
     || messageContainer.getAttribute("data-testid")
     || messageContainer.id
     || fallbackId;

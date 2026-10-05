@@ -7,6 +7,114 @@ async function launchWithUserData(userDataDir: string) {
   return electron.launch({ args: [".", `--user-data-dir=${userDataDir}`] });
 }
 
+test("accepts optional child-node requirements through the trusted desktop bridge", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "mindmap-expansion-"));
+  const userDataDir = await mkdtemp(path.join(tmpdir(), "mindmap-expansion-profile-"));
+  const application = await launchWithUserData(userDataDir);
+  try {
+    await application.evaluate(({ dialog, ipcMain }, selectedPath) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selectedPath] });
+      const prompts: string[] = [];
+      (globalThis as typeof globalThis & { expansionTestPrompts: string[] }).expansionTestPrompts = prompts;
+      ipcMain.on("ai:set-expansion-prompt", (_event, prompt: string) => prompts.push(prompt));
+    }, projectDir);
+    const page = await application.firstWindow();
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.getByRole("button", { name: "新建工作区", exact: true }).first().click();
+    await page.getByRole("button", { name: "生成子节点", exact: true }).click();
+    const input = page.getByRole("textbox", { name: "分点要求（可选）" });
+    await expect(input).toHaveValue("");
+    await input.fill("半导体的流程有哪些？");
+    const latestPrompt = () => application.evaluate(() =>
+      (globalThis as typeof globalThis & { expansionTestPrompts: string[] }).expansionTestPrompts.at(-1)
+    );
+    await expect.poll(latestPrompt).toBe("半导体的流程有哪些？");
+    await expect(page.locator(".ai-surface")).toBeVisible();
+    await page.screenshot({ path: "test-results/expansion-prompt.png" });
+    await page.getByRole("button", { name: "单一节点", exact: true }).click();
+    await expect(input).toHaveCount(0);
+    await expect.poll(latestPrompt).toBe("");
+    await page.getByRole("button", { name: "生成子节点", exact: true }).click();
+    await expect(input).toHaveValue("半导体的流程有哪些？");
+    await expect.poll(latestPrompt).toBe("半导体的流程有哪些？");
+    await input.fill("");
+    await expect.poll(latestPrompt).toBe("");
+    expect(errors).toEqual([]);
+  } finally {
+    await application.close();
+    await rm(projectDir, { recursive: true, force: true });
+    await rm(userDataDir, { recursive: true, force: true });
+  }
+});
+
+test("links a node to a child center and moves projects through the sidebar", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "mindmap-project-navigation-"));
+  const userDataDir = await mkdtemp(path.join(tmpdir(), "mindmap-navigation-profile-"));
+  const application = await launchWithUserData(userDataDir);
+  try {
+    await application.evaluate(({ dialog }, selectedPath) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selectedPath] });
+    }, projectDir);
+    const page = await application.firstWindow();
+    page.setDefaultTimeout(15_000);
+    await page.getByRole("button", { name: "新建工作区", exact: true }).first().click();
+    const map = page.locator(".mindmap-canvas");
+    await expect(map.locator(":scope > svg")).toBeVisible();
+    await map.locator(".smm-node", { hasText: "中心主题" }).click();
+    await map.locator(":scope > svg").hover();
+    await page.keyboard.press("Tab");
+    await page.locator(".smm-node-edit-wrap:visible").fill("研究主题");
+    await page.keyboard.press("Enter");
+    const entrance = map.locator(".smm-node", { hasText: "研究主题" });
+    await entrance.click();
+    await map.locator(":scope > svg").hover();
+    await page.keyboard.press("Tab");
+    await page.locator(".smm-node-edit-wrap:visible").fill("研究细节");
+    await page.keyboard.press("Enter");
+    await entrance.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "关联子项目", exact: true }).click();
+    await page.getByRole("textbox", { name: "子项目名称", exact: true }).fill("研究子项目");
+    await page.getByRole("button", { name: "关联项目", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "关联子项目" })).toHaveCount(0);
+    await expect(page.getByRole("treeitem", { name: "研究子项目", exact: true })).toBeVisible();
+    await entrance.dblclick();
+    await expect(page.getByLabel("项目路径")).toContainText("研究子项目");
+    await expect(map.locator(".smm-node", { hasText: "中心主题" })).toHaveCount(0);
+    await expect(map.locator(".smm-node", { hasText: "研究细节" })).toBeVisible();
+    const workspace = JSON.parse(await readFile(path.join(projectDir, "workspace.json"), "utf8"));
+    const childId = workspace.activeProjectId;
+    const parentId = workspace.projects.find((project: { projectId: string }) => project.projectId !== childId).projectId;
+    const childRow = page.locator(`.project-row[data-project-id="${childId}"]`);
+    const parentRow = page.locator(`.project-row[data-project-id="${parentId}"]`);
+    await childRow.dragTo(page.getByLabel("移为主项目"));
+    await expect.poll(async () => JSON.parse(await readFile(path.join(projectDir, "workspace.json"), "utf8")).projects.find((project: { projectId: string }) => project.projectId === childId).parentProjectId).toBeNull();
+    await childRow.dragTo(parentRow);
+    await expect.poll(async () => JSON.parse(await readFile(path.join(projectDir, "workspace.json"), "utf8")).projects.find((project: { projectId: string }) => project.projectId === childId).parentProjectId).toBe(parentId);
+    await parentRow.dragTo(childRow);
+    const afterInvalidDrop = JSON.parse(await readFile(path.join(projectDir, "workspace.json"), "utf8"));
+    expect(afterInvalidDrop.projects.find((project: { projectId: string }) => project.projectId === parentId).parentProjectId).toBeNull();
+    await parentRow.getByRole("button", { name: afterInvalidDrop.projects.find((project: { projectId: string }) => project.projectId === parentId).name, exact: true }).click();
+    await expect(map.locator(".smm-node", { hasText: "中心主题" })).toBeVisible();
+    await map.locator(".smm-node", { hasText: "研究细节" }).click({ button: "right" });
+    await page.getByRole("menuitem", { name: "关联子项目", exact: true }).click();
+    await page.getByLabel("关联方式", { exact: true }).selectOption("existing");
+    await page.getByLabel("目标项目", { exact: true }).selectOption(childId);
+    await page.getByRole("button", { name: "关联项目", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "关联子项目" })).toHaveCount(0);
+    await map.locator(".smm-node", { hasText: "研究主题" }).last().dblclick();
+    await expect(page.getByLabel("项目路径")).toContainText("研究子项目");
+    await page.screenshot({ path: "test-results/project-navigation.png" });
+    const childMap = JSON.parse(await readFile(path.join(projectDir, "projects", childId, "mindmap.json"), "utf8"));
+    expect(childMap.text).toBe("研究主题");
+    expect(childMap.children[0]?.text).toBe("研究细节");
+  } finally {
+    await application.close();
+    await rm(projectDir, { recursive: true, force: true });
+    await rm(userDataDir, { recursive: true, force: true });
+  }
+});
+
 test("boots the secure local workspace and exposes the typed bridge", async () => {
   const userDataDir = await mkdtemp(path.join(tmpdir(), "mindmap-ai-user-data-"));
   const application = await launchWithUserData(userDataDir);
@@ -187,7 +295,7 @@ test("captures a local answer, attaches it to the map, and opens the reader", as
         capturedAt: "2026-08-17T00:00:00.000Z",
         updatedAt: "2026-08-17T00:00:00.000Z"
       },
-      body: "## Captured integration answer\n\nA formula: $E = mc^2$\n\n$$x^2 + y^2 = z^2$$\n\n[![source](https://example.com/icon.svg) Source](https://example.com/report)\n\n| A | B |\n| - | - |\n| 1 | 2 |"
+      body: "## Captured integration answer\n\nA formula: \\(\\frac{1}{2}\\).\n\n\\[\\int_0^1 \\frac{x^2}{1+x}\\,dx = \\ln 2 - \\frac{1}{2}\\]\n\n[![source](https://example.com/icon.svg) Source](https://example.com/report)\n\n| A | B |\n| - | - |\n| 1 | 2 |"
     };
     await page.evaluate((document) => window.mindmapAI.project.writeAnswer(document), answer);
     const candidateData = {
@@ -212,8 +320,67 @@ test("captures a local answer, attaches it to the map, and opens the reader", as
     await expect(page.getByLabel("回答阅读器")).toBeVisible();
     await expect(page.getByLabel("回答阅读器").locator(".katex")).toHaveCount(2);
     await expect(page.getByLabel("回答阅读器").locator(".katex-display")).toHaveCount(1);
+    const mathLayout = await page.locator(".markdown-preview").evaluate(async (element) => {
+      await document.fonts.ready;
+      return {
+        errors: element.querySelectorAll(".katex-error").length,
+        fractions: [...element.querySelectorAll(".frac-line")].map((line) => ({
+          width: line.getBoundingClientRect().width,
+          border: getComputedStyle(line).borderBottomStyle
+        })),
+        // The root math row and strut establish the fraction/integral baseline.
+        rowDisplay: getComputedStyle(element.querySelector(".katex-html > span")!).display,
+        fontLoaded: document.fonts.check('16px "KaTeX_Main"'),
+        displayFontLoaded: document.fonts.check('16px "KaTeX_Size2"')
+      };
+    });
+    expect(mathLayout.errors).toBe(0);
+    expect(mathLayout.fractions).toHaveLength(3);
+    for (const fraction of mathLayout.fractions) {
+      expect(fraction.width).toBeGreaterThan(3);
+      expect(fraction.border).toBe("solid");
+    }
+    expect(mathLayout.rowDisplay).toBe("inline-block");
+    expect(mathLayout.fontLoaded).toBe(true);
+    expect(mathLayout.displayFontLoaded).toBe(true);
+    await page.getByLabel("回答阅读器").screenshot({ path: "test-results/answer-math.png" });
     await expect(page.getByLabel("回答阅读器").locator("a > img")).toHaveCSS("width", "14px");
     await expect(page.getByLabel("回答阅读器").locator("a > img")).toHaveCSS("height", "14px");
+    await page.getByRole("button", { name: "编辑", exact: true }).click();
+    const betaBody = String.raw`## Beta 分布与 Gamma 函数
+
+$$B(\alpha,\beta)=\frac{\Gamma(\alpha)\Gamma(\beta)}{\Gamma(\alpha+\beta)}$$
+
+$$B(\alpha,\beta)=\frac{(\alpha-1)!(\beta-1)!}{(\alpha+\beta-1)!}$$
+
+$$\binom{n}{m}=\frac{n!}{m!(n-m)!}$$
+
+$$\text{Beta 分布就是把一个自然描述成功与失败权重的函数，经过归一化后得到的概率分布。}$$
+
+$$\frac{1}{1+\frac{1}{1+\frac{1}{x}}}$$
+
+正文应正常显示。`;
+    await page.locator(".cm-content").fill(betaBody);
+    await page.getByRole("button", { name: "预览", exact: true }).click();
+    await expect(page.locator(".markdown-preview .katex-display")).toHaveCount(5);
+    const clipping = await page.locator(".markdown-preview .katex-display").evaluateAll(async (blocks) => {
+      await document.fonts.ready;
+      return blocks.map((block) => {
+        const outer = block.getBoundingClientRect();
+        const glyphs = [...block.querySelectorAll(".katex-html .mord, .katex-html .mop, .katex-html .frac-line")]
+          .filter((glyph) => glyph.childElementCount === 0)
+          .map((glyph) => glyph.getBoundingClientRect());
+        return {
+          top: Math.max(0, outer.top - Math.min(...glyphs.map((glyph) => glyph.top))),
+          bottom: Math.max(0, Math.max(...glyphs.map((glyph) => glyph.bottom)) - outer.bottom)
+        };
+      });
+    });
+    for (const block of clipping) {
+      expect(block.top).toBeLessThanOrEqual(1);
+      expect(block.bottom).toBeLessThanOrEqual(1);
+    }
+    await page.getByLabel("回答阅读器").screenshot({ path: "test-results/answer-beta-math.png" });
     await expect(page.getByText("已保存", { exact: true })).toBeVisible({ timeout: 5_000 });
 
     const workspace = JSON.parse(await readFile(path.join(projectDir, "workspace.json"), "utf8")) as { activeProjectId: string };

@@ -18,6 +18,8 @@ export const IPC = {
   workspaceProjectCreate: "workspace-project:create",
   workspaceProjectSwitch: "workspace-project:switch",
   workspaceProjectRename: "workspace-project:rename",
+  workspaceProjectReparent: "workspace-project:reparent",
+  workspaceProjectLinkNode: "workspace-project:link-node",
   workspaceProjectSave: "workspace-project:save",
   workspaceProjectOpenInExplorer: "workspace-project:open-in-explorer",
   workspaceProjectMoveToTrash: "workspace-project:move-to-trash",
@@ -34,6 +36,7 @@ export const IPC = {
   aiCaptureLatest: "ai:capture-latest",
   aiPickAnswer: "ai:pick-answer",
   aiSetHoverCapture: "ai:set-hover-capture",
+  aiSetExpansionPrompt: "ai:set-expansion-prompt",
   aiBeginLocalDrag: "ai:begin-local-drag",
   aiEndLocalDrag: "ai:end-local-drag",
   aiCapturedFromPage: "ai:captured-from-page",
@@ -79,6 +82,19 @@ export const projectCreateRequestSchema = z.object({
 export const projectRenameRequestSchema = z.object({
   projectId: projectIdSchema,
   name: projectNameSchema
+}).strict();
+
+export const projectReparentRequestSchema = z.object({
+  projectId: projectIdSchema,
+  parentProjectId: projectIdSchema.nullable()
+}).strict();
+
+export const projectLinkNodeRequestSchema = z.object({
+  nodeUid: z.string().min(1).max(128),
+  target: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("create"), name: projectNameSchema }).strict(),
+    z.object({ kind: z.literal("existing"), projectId: projectIdSchema }).strict()
+  ])
 }).strict();
 
 export const projectPermanentDeleteRequestSchema = z.object({

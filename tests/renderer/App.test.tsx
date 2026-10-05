@@ -27,7 +27,8 @@ vi.mock("../../src/renderer/src/components/NodeTray.js", () => ({ NodeTray: () =
 vi.mock("../../src/renderer/src/components/StylePanel.js", () => ({ StylePanel: () => null }));
 vi.mock("../../src/renderer/src/components/AnswerDialog.js", () => ({ AnswerDialog: () => null }));
 vi.mock("../../src/renderer/src/state/use-project.js", () => ({
-  useProject: Object.assign(() => harness.state, { getState: () => harness.state })
+  useProject: Object.assign((selector?: (state: Record<string, unknown>) => unknown) =>
+    selector ? selector(harness.state as Record<string, unknown>) : harness.state, { getState: () => harness.state })
 }));
 
 import { App } from "../../src/renderer/src/App.js";
@@ -112,6 +113,7 @@ describe("App workspace flows", () => {
           captureLatest: vi.fn(),
           pickAnswer: vi.fn(),
           setHoverCapture: vi.fn(),
+          setExpansionPrompt: vi.fn(),
           beginLocalDrag: vi.fn(),
           endLocalDrag: vi.fn(),
           onAnswerCaptured: vi.fn(() => () => undefined),

@@ -2,8 +2,13 @@ packages:
   - .
 allowBuilds:
   electron: true
+  electron-winstaller: false
   esbuild: true
 overrides:
   tern>acorn: 6.4.2
   acorn-loose>acorn: 6.4.2
   simple-mind-map>uuid: 11.1.1
+  # Keep the generated math HTML compatible with our KaTeX CSS and fonts.
+  'rehype-katex>katex': 0.18.4
+  # 1.0.0 loses KaTeX inline layout styles through Vite's CJS interop.
+  'hast-util-to-jsx-runtime>style-to-js': 1.1.21

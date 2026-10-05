@@ -70,11 +70,13 @@ function api(overrides: Partial<DesktopApi["project"]> = {}): DesktopApi {
     project: {
       create: vi.fn(), open: vi.fn(), save: vi.fn(), readAnswer: vi.fn(), writeAnswer: vi.fn(),
       createNested: vi.fn(), switch: vi.fn(), rename: vi.fn(), saveActive: vi.fn(), openInExplorer: vi.fn(),
+      reparent: vi.fn(), linkNode: vi.fn(),
       moveToTrash: vi.fn(), restore: vi.fn(), permanentlyDelete: vi.fn(), export: vi.fn(),
       ...overrides
     },
     ai: {
       setPanelBounds: vi.fn(), setPanelVisible: vi.fn(), captureLatest: vi.fn(), pickAnswer: vi.fn(), setHoverCapture: vi.fn(),
+      setExpansionPrompt: vi.fn(),
       beginLocalDrag: vi.fn(), endLocalDrag: vi.fn(),
       onAnswerCaptured: vi.fn(() => () => undefined), onAdapterError: vi.fn(() => () => undefined)
     }
@@ -94,7 +96,7 @@ beforeEach(() => {
 });
 
 describe("project save state", () => {
-  test("keeps a newer edit dirty when an older save finishes", async () => {
+  test("saves the newest edit after an older save finishes", async () => {
     let finishSave!: (value: SaveResult) => void;
     const saving = new Promise<SaveResult>((resolve) => { finishSave = resolve; });
     window.mindmapAI = api({ saveActive: vi.fn(() => saving) });
@@ -106,7 +108,8 @@ describe("project save state", () => {
     await pending;
 
     expect(useProject.getState().snapshot?.manifest.name).toBe("After");
-    expect(useProject.getState().saveStatus).toBe("dirty");
+    expect(useProject.getState().saveStatus).toBe("saved");
+    expect(window.mindmapAI.project.saveActive).toHaveBeenCalledTimes(2);
   });
 
   test("serializes overlapping autosaves so newer state is written last", async () => {

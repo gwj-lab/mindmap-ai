@@ -28,6 +28,20 @@ const workspace: WorkspaceManifest = {
 afterEach(() => document.body.replaceChildren());
 
 describe("ProjectNavigator", () => {
+  test("accepts moving a child to workspace root and rejects circular drops", () => {
+    const onReparent = vi.fn();
+    render(<ProjectNavigator workspace={workspace} onReparent={onReparent} onSwitch={vi.fn()} onCreate={vi.fn()} onRename={vi.fn()} onOpenInExplorer={vi.fn()} onOpenApiSettings={vi.fn()} />);
+    const dataTransfer = { setData: vi.fn(), getData: () => CHILD_ID, effectAllowed: "", dropEffect: "" };
+    const child = screen.getByRole("treeitem", { name: "Child", exact: true }).querySelector(".project-row")!;
+    fireEvent.dragStart(child, { dataTransfer });
+    fireEvent.drop(screen.getByLabelText("移为主项目"), { dataTransfer });
+    expect(onReparent).toHaveBeenCalledWith(CHILD_ID, null);
+    onReparent.mockClear();
+    dataTransfer.getData = () => ROOT_ID;
+    fireEvent.dragStart(screen.getByRole("treeitem", { name: "Root", exact: true }).querySelector(".project-row")!, { dataTransfer });
+    fireEvent.drop(child, { dataTransfer });
+    expect(onReparent).not.toHaveBeenCalled();
+  });
   test("renders nested projects, active state, and breadcrumbs", () => {
     render(<ProjectNavigator
       workspace={workspace}

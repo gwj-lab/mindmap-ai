@@ -62,6 +62,19 @@ export class AnswerRepository {
       .map(async (file) => parseAnswer(await readFile(path.join(this.#root, file), "utf8"))));
   }
 
+  async listIds(): Promise<Set<string>> {
+    try {
+      const files = await readdir(this.#root);
+      return new Set(files
+        .filter((file) => file.endsWith(".md"))
+        .map((file) => file.slice(0, -3))
+        .filter((id) => /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(id)));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return new Set();
+      throw error;
+    }
+  }
+
   async list(): Promise<Array<{ id: string; title: string; capturedAt: string }>> {
     return (await this.listDocuments()).map((answer) => ({
       id: answer.metadata.id,
