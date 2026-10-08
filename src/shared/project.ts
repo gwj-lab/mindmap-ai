@@ -14,7 +14,7 @@ export const projectManifestSchema = z.object({
 
 export const answerMetadataSchema = z.object({
   id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/),
-  provider: z.literal("chatgpt"),
+  provider: z.enum(["chatgpt", "yuanbao", "doubao"]),
   title: z.string().trim().min(1).max(160),
   sourceUrl: z.string().url().startsWith("https://"),
   sourceMessageId: z.string().min(1).max(256),

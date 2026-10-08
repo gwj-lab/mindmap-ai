@@ -4,13 +4,30 @@ import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { safeLink } from "../../../shared/content.js";
+import type { ProviderId } from "../../../shared/types.js";
 
 interface MarkdownPreviewProps {
   body: string;
   className?: string;
+  provider?: ProviderId;
 }
 
 const REMARK_PLUGINS = [remarkGfm, remarkMath];
+interface MarkdownNode { type: string; value?: string; children?: MarkdownNode[] }
+function tableCellBreaks() {
+  return (tree: unknown): void => {
+    const visit = (node: MarkdownNode, inCell = false): void => {
+      const cell = inCell || node.type === "tableCell";
+      if (cell && node.type === "html" && /^<br\s*\/?\s*>$/i.test(node.value ?? "")) {
+        node.type = "break";
+        delete node.value;
+      }
+      node.children?.forEach((child) => visit(child, cell));
+    };
+    visit(tree as MarkdownNode);
+  };
+}
+const PLATFORM_REMARK_PLUGINS = [...REMARK_PLUGINS, tableCellBreaks];
 const REHYPE_PLUGINS = [[rehypeKatex, { trust: false, maxExpand: 1000, maxSize: 20 }]] as NonNullable<Options["rehypePlugins"]>;
 
 const components = {
@@ -107,13 +124,14 @@ function normalizeDisplayMath(markdown: string): string {
 
 export const MarkdownPreview = memo(function MarkdownPreview({
   body,
-  className = "markdown-preview"
+  className = "markdown-preview",
+  provider = "chatgpt"
 }: MarkdownPreviewProps): React.JSX.Element {
   const normalizedBody = useMemo(() => normalizeDisplayMath(body), [body]);
   return (
-    <article className={className}>
+    <article className={className} data-provider={provider}>
       <ReactMarkdown
-        remarkPlugins={REMARK_PLUGINS}
+        remarkPlugins={provider === "chatgpt" ? REMARK_PLUGINS : PLATFORM_REMARK_PLUGINS}
         rehypePlugins={REHYPE_PLUGINS}
         urlTransform={safeLink}
         components={components}

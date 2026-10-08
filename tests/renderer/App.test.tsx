@@ -17,9 +17,9 @@ const harness = vi.hoisted(() => ({
 }));
 
 vi.mock("flexlayout-react", () => ({
-  Model: { fromJson: vi.fn(() => ({ toJson: () => ({}) })) },
-  Layout: ({ factory }: { factory(node: { getComponent(): string }): React.ReactNode }) => (
-    <div data-testid="dock-layout">{factory({ getComponent: () => "ai" })}</div>
+  Model: { fromJson: vi.fn(() => ({ toJson: () => ({}), visitNodes: () => {} })) },
+  Layout: ({ factory }: { factory(node: { getComponent(): string; getId(): string; getConfig(): object; isVisible(): boolean }): React.ReactNode }) => (
+    <div data-testid="dock-layout">{factory({ getComponent: () => "ai", getId: () => "ai", getConfig: () => ({}), isVisible: () => true })}</div>
   )
 }));
 vi.mock("../../src/renderer/src/components/MindMapPanel.js", () => ({ MindMapPanel: () => null }));
@@ -108,6 +108,7 @@ describe("App workspace flows", () => {
           clearApiKey: vi.fn()
         },
         ai: {
+          syncTabs: vi.fn(),
           setPanelBounds: vi.fn(),
           setPanelVisible: vi.fn(),
           captureLatest: vi.fn(),

@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Crosshair, ListTree, MousePointer2, Settings, ShieldCheck } from "lucide-react";
-import type { UiPreferences } from "../../../shared/types.js";
+import type { ProviderId, UiPreferences } from "../../../shared/types.js";
+import { AI_PROVIDERS } from "../../../shared/ai-providers.js";
 
 interface AiPanelProps {
+  tabId?: string;
+  provider?: ProviderId;
   readOnly?: boolean;
   autoHoverCapture: boolean;
   captureMode: UiPreferences["captureMode"];
@@ -12,6 +15,8 @@ interface AiPanelProps {
 }
 
 export function AiPanel({
+  tabId = "ai",
+  provider = "chatgpt",
   readOnly = false,
   autoHoverCapture,
   captureMode,
@@ -34,7 +39,7 @@ export function AiPanel({
       if (nextVisible !== previousVisible) {
         previousVisible = nextVisible;
         setVisible(nextVisible);
-        window.mindmapAI.ai.setPanelVisible(nextVisible);
+        window.mindmapAI.ai.setPanelVisible(nextVisible, tabId);
       }
       if (nextVisible) {
         const bounds = {
@@ -46,7 +51,7 @@ export function AiPanel({
         const key = `${bounds.x},${bounds.y},${bounds.width},${bounds.height}`;
         if (key !== previousBounds) {
           previousBounds = key;
-          window.mindmapAI.ai.setPanelBounds(bounds);
+          window.mindmapAI.ai.setPanelBounds(bounds, tabId);
         }
       }
     };
@@ -60,23 +65,23 @@ export function AiPanel({
       resize.disconnect();
       intersection.disconnect();
       window.removeEventListener("resize", update);
-      if (previousVisible !== false) window.mindmapAI.ai.setPanelVisible(false);
+      if (previousVisible !== false) window.mindmapAI.ai.setPanelVisible(false, tabId);
     };
-  }, []);
+  }, [tabId]);
 
   useEffect(() => {
-    window.mindmapAI.ai.setHoverCapture(autoHoverCapture);
-  }, [autoHoverCapture]);
+    window.mindmapAI.ai.setHoverCapture(autoHoverCapture && !readOnly, tabId);
+  }, [autoHoverCapture, readOnly, tabId]);
 
   useEffect(() => {
-    window.mindmapAI.ai.setExpansionPrompt(captureMode === "expanded" && !readOnly ? expansionPrompt : "");
-    return () => window.mindmapAI.ai.setExpansionPrompt("");
-  }, [captureMode, expansionPrompt, readOnly]);
+    window.mindmapAI.ai.setExpansionPrompt(captureMode === "expanded" && !readOnly ? expansionPrompt : "", tabId);
+    return () => window.mindmapAI.ai.setExpansionPrompt("", tabId);
+  }, [captureMode, expansionPrompt, readOnly, tabId]);
 
   return (
-    <section className={`ai-panel${captureMode === "expanded" ? " ai-panel-expanded" : ""}`}>
+    <section data-ai-tab-id={tabId} className={`ai-panel${captureMode === "expanded" ? " ai-panel-expanded" : ""}`}>
       <div className="ai-toolbar">
-        <span className="provider-state"><i className={visible ? "online" : ""} />ChatGPT 网页端</span>
+        <span className="provider-state"><i className={visible ? "online" : ""} />{AI_PROVIDERS[provider].name}</span>
         <span className="security-chip"><ShieldCheck size={13} />隔离</span>
         <label className="hover-capture-toggle" title="悬停识别回答，双击捕获当前回答">
           <input
@@ -91,9 +96,9 @@ export function AiPanel({
           <button className={captureMode === "single" ? "active" : ""} disabled={readOnly} onClick={() => onCaptureModeChange("single")}><Crosshair size={13} />单一节点</button>
           <button className={captureMode === "expanded" ? "active" : ""} disabled={readOnly} onClick={() => onCaptureModeChange("expanded")}><ListTree size={13} />生成子节点</button>
         </div>
-        <button aria-label="点选回答" title="在网页中点选一条回答" disabled={readOnly} onClick={() => window.mindmapAI.ai.pickAnswer()}><MousePointer2 size={15} /></button>
+        <button aria-label="点选回答" title="在网页中点选一条回答" disabled={readOnly} onClick={() => window.mindmapAI.ai.pickAnswer(tabId)}><MousePointer2 size={15} /></button>
         <button aria-label="AI 设置" title="AI 设置" onClick={onOpenSettings}><Settings size={15} /></button>
-        <button aria-label="捕获最新回答" className="capture-button" disabled={readOnly} onClick={() => window.mindmapAI.ai.captureLatest()}>
+        <button aria-label="捕获最新回答" className="capture-button" disabled={readOnly} onClick={() => window.mindmapAI.ai.captureLatest(tabId)}>
           捕获最新
         </button>
       </div>
@@ -115,7 +120,7 @@ export function AiPanel({
       <div ref={surfaceRef} className="ai-surface">
         <div className="ai-placeholder">
           <div className="loading-ring" />
-          <strong>正在连接 ChatGPT</strong>
+          <strong>正在连接{AI_PROVIDERS[provider].name}</strong>
           <span>网页会话在独立沙箱中运行</span>
         </div>
       </div>

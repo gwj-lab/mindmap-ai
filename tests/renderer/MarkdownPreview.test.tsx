@@ -6,6 +6,17 @@ import { describe, expect, test } from "vitest";
 import { MarkdownPreview } from "../../src/renderer/src/components/MarkdownPreview.js";
 
 describe("MarkdownPreview", () => {
+  test("renders new-platform table breaks safely while keeping ChatGPT rendering unchanged", () => {
+    const body = "| A | B |\n| --- | --- |\n| one<br>two | <img src=x onerror=alert(1)>unsafe |";
+    const chatgpt = render(<MarkdownPreview body={body} />);
+    expect(chatgpt.container.querySelector("td br")).toBeNull();
+    for (const provider of ["doubao", "yuanbao"] as const) {
+      const result = render(<MarkdownPreview body={body} provider={provider} />);
+      expect(result.container.querySelectorAll("td br")).toHaveLength(1);
+      expect(result.container.querySelector("img")).toBeNull();
+      expect(result.container.querySelector("td")?.textContent).toBe("one\ntwo");
+    }
+  });
   test("uses the same KaTeX engine as the installed stylesheet and fonts", () => {
     const require = createRequire(import.meta.url);
     const pluginRequire = createRequire(require.resolve("rehype-katex"));

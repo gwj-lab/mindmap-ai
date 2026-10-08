@@ -1,0 +1,45 @@
+<!-- Offline format fixture, not a captured live Doubao answer. -->
+<div data-testid="receive_message" data-message-id="doubao-format-test">
+<div data-testid="message_text_content" class="markdown">
+<h1>豆包格式保存全项验收</h1><h2>二级标题</h2><h3>三级标题</h3><h4>四级标题</h4><h5>五级标题</h5><h6>六级标题</h6>
+<p>中文 English <strong>粗体</strong> <em>斜体</em> <em><strong>粗斜体</strong></em> <del>删除线</del> <code>const price = "$100";</code><br>显式换行</p>
+<ul><li>苹果<ul><li>嵌套<ul><li>二层嵌套</li></ul></li></ul></li><li>香蕉</li></ul>
+<ol start="3"><li>第三项</li><li>第四项</li></ol>
+<ul><li><input type="checkbox" checked>完成一</li><li><input type="checkbox" checked>完成二</li><li><input type="checkbox">待办一</li><li><input type="checkbox">待办二</li></ul>
+<blockquote><p>引用正文</p><blockquote>嵌套引用</blockquote></blockquote><hr>
+<pre data-language="javascript"><div class="code-header">javascript<button>Copy</button></div><code class="language-javascript">async function fetchValue() {
+  const price = "$100";
+
+
+  console.log("```", price);
+}
+</code></pre>
+<pre><code class="language-python">def square(x):
+    # 中文注释
+
+    return x ** 2
+</code></pre>
+<pre><code class="language-text">**bold**
+## heading
+$E=mc^2$
+LaTeX literal: \frac{a}{b}
+</code></pre>
+<table><thead><tr><th style="text-align:left">左对齐</th><th style="text-align:center">居中</th><th style="text-align:right">右对齐</th><th>默认</th></tr></thead><tbody><tr><td>中文</td><td><em>斜体</em></td><td><span class="katex" data-tex="x_i^2">rendered</span></td><td>100</td></tr><tr><td>竖线 | 测试</td><td>第一行<br>第二行</td><td>123</td><td>456</td></tr></tbody></table>
+<p>行内：<span class="katex" data-tex="\frac{a}{b}">fraction</span> <span class="katex" data-tex="x_i^2">script</span> <span class="katex" data-tex="\alpha+\beta">greek</span> <span class="katex" data-tex="\sqrt{x}">root</span> <span class="katex" data-tex="\sum_{i=1}^n i">sum</span></p>
+<div class="katex-display" data-tex="\frac{1}{1+\frac{1}{x}}">fraction</div>
+<div class="katex-display" data-tex="\int_0^1 x\,dx">integral</div>
+<div class="katex-display" data-tex="B(a,b)=\frac{\Gamma(a)\Gamma(b)}{\Gamma(a+b)}">beta</div>
+<div class="katex-display" data-tex="\binom{n}{m}">combination</div>
+<div class="katex-display" data-tex="\begin{pmatrix}a&amp;b\\c&amp;d\end{pmatrix}">matrix</div>
+<div class="katex-display" data-tex="f(x)=\begin{cases}x&amp;x&gt;0\\0&amp;x\leq0\end{cases}">cases</div>
+<div class="katex-display" data-tex="\begin{aligned}x+y&amp;=1\\x-y&amp;=0\end{aligned}">aligned</div>
+<p><a href="https://katex.org/docs/supported">KaTeX 来源</a> <a href="https://www.python.org/">Python</a></p>
+<p><img src="https://www.python.org/static/community_logos/python-logo.png" alt="Python 标志"></p>
+<p><a href="https://www.python.org/"><img src="https://www.python.org/static/community_logos/python-logo.png" alt="链接图片"></a></p>
+<p>脚注<sup><a href="#fn-format" data-footnote-ref>1</a></sup></p><section data-footnotes><ol><li id="fn-format"><p>脚注说明<a data-footnote-backref href="#ref-format">↩</a></p></li></ol></section>
+<pre><code class="language-mermaid">graph TD
+  A[开始] --&gt; B[结束]
+</code></pre>
+<p>特殊字符 &amp; &lt; &gt; | * _ 和价格 $100、$9.99</p>
+</div><div data-testid="message_actions"><button>复制</button>点赞</div>
+</div>

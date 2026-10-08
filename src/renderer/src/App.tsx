@@ -1,7 +1,9 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
-import { Layout, Model, type TabNode } from "flexlayout-react";
+import { Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { Actions, DockLocation, Layout, type Model, type TabNode } from "flexlayout-react";
 import { AlertCircle, CheckCircle2, X } from "lucide-react";
 import { DEFAULT_DOCK_LAYOUT } from "../../shared/layout.js";
+import { AI_PROVIDERS, isProviderId } from "../../shared/ai-providers.js";
+import { collectAiTabs, createLayoutModel, getAiTabProvider, isAiTabSet } from "./ai-tabs.js";
 import type { ActiveProjectSnapshot, MindMapNodeData } from "../../shared/types.js";
 import {
   applyPersistedCandidate,
@@ -64,14 +66,6 @@ interface OpenAnswer {
   nodeUid: string;
 }
 
-function createLayoutModel(json: unknown): Model {
-  try {
-    return Model.fromJson(structuredClone(json) as never);
-  } catch {
-    return Model.fromJson(structuredClone(DEFAULT_DOCK_LAYOUT) as never);
-  }
-}
-
 export function App(): React.JSX.Element {
   const workspace = useProject((state) => state.workspace);
   const snapshot = useProject((state) => state.snapshot);
@@ -113,6 +107,10 @@ export function App(): React.JSX.Element {
     ? layoutOverride.model
     : projectModel;
 
+  useLayoutEffect(() => {
+    window.mindmapAI.ai.syncTabs(collectAiTabs(model));
+  }, [model]);
+
   useEffect(() => {
     void initializeWorkspace();
   }, [initializeWorkspace]);
@@ -150,10 +148,12 @@ export function App(): React.JSX.Element {
     window.addEventListener("keydown", onKey);
     document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("pointerup", onPointerUp, true);
+    document.addEventListener("dragend", onPointerUp, true);
     return () => {
       window.removeEventListener("keydown", onKey);
       document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("pointerup", onPointerUp, true);
+      document.removeEventListener("dragend", onPointerUp, true);
     };
   }, [saveProject]);
 
@@ -197,6 +197,8 @@ export function App(): React.JSX.Element {
       case "ai":
         return (
           <AiPanel
+            tabId={node.getId()}
+            provider={getAiTabProvider(node)}
             readOnly={snapshot.readOnly}
             autoHoverCapture={snapshot.state.uiPreferences.autoHoverCapture}
             captureMode={snapshot.state.uiPreferences.captureMode}
@@ -330,7 +332,33 @@ export function App(): React.JSX.Element {
                 model={model}
                 factory={factory}
                 realtimeResize
+                onRenderTabSet={(tabSet, renderValues) => {
+                  if (!isAiTabSet(tabSet)) return;
+                  renderValues.stickyButtons.push(
+                    <select
+                      key="new-ai-tab"
+                      className="ai-add-tab"
+                      aria-label="新建问答标签页"
+                      title="新建问答标签页"
+                      value=""
+                      disabled={collectAiTabs(model).length >= 64}
+                      onMouseDown={(event) => event.stopPropagation()}
+                      onChange={(event) => {
+                        const provider = event.currentTarget.value;
+                        if (!isProviderId(provider)) return;
+                        model.doAction(Actions.addNode({
+                          type: "tab", id: `ai-${crypto.randomUUID()}`, name: AI_PROVIDERS[provider].name,
+                          component: "ai", config: { provider }
+                        }, tabSet.getId(), DockLocation.CENTER, -1, true));
+                      }}
+                    >
+                      <option value="" disabled>＋</option>
+                      {Object.entries(AI_PROVIDERS).map(([id, { name }]) => <option key={id} value={id}>打开{name}</option>)}
+                    </select>
+                  );
+                }}
                 onModelChange={(nextModel) => {
+                  window.mindmapAI.ai.syncTabs(collectAiTabs(nextModel));
                   if (activeProjectId) setLayoutOverride({ projectId: activeProjectId, model: nextModel });
                   const current = useProject.getState().snapshot;
                   if (current && !current.readOnly) setSnapshot({

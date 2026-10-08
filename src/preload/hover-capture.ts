@@ -1,5 +1,5 @@
 import type { CaptureAcknowledgement } from "../shared/types.js";
-import { findAssistantMessage, isAssistantMessageStreaming } from "./chatgpt-adapter.js";
+import { findAssistantMessage, isAssistantMessageStreaming } from "./answer-adapter.js";
 
 const HOVER_CLASS = "mindmap-ai-hover-target";
 const BADGE_CLASS = "mindmap-ai-capture-badge";
@@ -29,7 +29,8 @@ export class HoverCaptureController {
   constructor(
     private readonly documentRef: Document,
     private readonly capture: CaptureHoveredAnswer,
-    private enabled = true
+    private enabled = true,
+    private readonly sourceUrl = "https://chatgpt.com/"
   ) {}
 
   start(): void {
@@ -60,7 +61,7 @@ export class HoverCaptureController {
 
   readonly #onMouseOver = (event: MouseEvent): void => {
     if (!this.enabled) return;
-    const message = findAssistantMessage(event.target);
+    const message = findAssistantMessage(event.target, this.sourceUrl);
     if (!message || message === this.#active) return;
     this.#activate(message);
   };
@@ -69,15 +70,15 @@ export class HoverCaptureController {
     if (!this.#active) return;
     const next = event.relatedTarget instanceof Node ? event.relatedTarget : null;
     if (next && this.#active.contains(next)) return;
-    if (findAssistantMessage(event.target) === this.#active) this.#deactivate();
+    if (findAssistantMessage(event.target, this.sourceUrl) === this.#active) this.#deactivate();
   };
 
   readonly #onDoubleClick = (event: MouseEvent): void => {
-    const message = findAssistantMessage(event.target);
+    const message = findAssistantMessage(event.target, this.sourceUrl);
     if (!this.enabled || !message || message !== this.#active || this.#capturing === message) return;
     event.preventDefault();
     event.stopPropagation();
-    if (isAssistantMessageStreaming(message)) {
+    if (isAssistantMessageStreaming(message, this.sourceUrl)) {
       renderCaptureBadge(message, { status: "failed", message: "回答仍在生成，请稍后双击" });
       return;
     }

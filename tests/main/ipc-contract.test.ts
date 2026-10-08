@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import {
   IPC,
+  aiTabsSchema,
+  capturedAnswerPayloadSchema,
   projectCreateRequestSchema,
   projectIdRequestSchema,
   projectRenameRequestSchema,
@@ -59,5 +61,19 @@ describe("workspace IPC contract", () => {
     expect(isTrustedIpcSender(expected, expected)).toBe(true);
     expect(isTrustedIpcSender({}, expected)).toBe(false);
     expect(isTrustedIpcSender(null, expected)).toBe(false);
+  });
+
+  test("binds each capture provider to its HTTPS host", () => {
+    const base = { sourceMessageId: "answer", markdown: "Answer" };
+    expect(capturedAnswerPayloadSchema.parse({ ...base, provider: "yuanbao", sourceUrl: "https://yuanbao.tencent.com/chat/1" }).provider).toBe("yuanbao");
+    expect(capturedAnswerPayloadSchema.parse({ ...base, provider: "doubao", sourceUrl: "https://www.doubao.com/chat/1" }).provider).toBe("doubao");
+    expect(() => capturedAnswerPayloadSchema.parse({ ...base, provider: "doubao", sourceUrl: "https://www.doubao.com.evil.test/chat/1" })).toThrow();
+    expect(() => capturedAnswerPayloadSchema.parse({ ...base, provider: "chatgpt", sourceUrl: "https://www.doubao.com/chat/1" })).toThrow();
+  });
+
+  test("accepts tab identities and fixed providers without renderer-supplied URLs", () => {
+    expect(aiTabsSchema.parse([{ id: "ai-one", provider: "yuanbao" }, { id: "ai-two", provider: "doubao" }])).toHaveLength(2);
+    expect(() => aiTabsSchema.parse([{ id: "ai-one", provider: "custom", url: "https://example.com" }])).toThrow();
+    expect(() => aiTabsSchema.parse([{ id: "ai-one", provider: "yuanbao" }, { id: "ai-one", provider: "doubao" }])).toThrow();
   });
 });

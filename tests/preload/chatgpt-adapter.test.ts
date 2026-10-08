@@ -4,12 +4,14 @@ import { resolve } from "node:path";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
   CaptureDeduper,
-  CaptureDelivery,
+  CaptureDelivery
+} from "../../src/preload/chatgpt-adapter.js";
+import {
   extractAnswerFromTarget,
   extractLatestAnswer,
   extractSelectedAnswer,
   findAssistantMessage
-} from "../../src/preload/chatgpt-adapter.js";
+} from "../../src/preload/answer-adapter.js";
 import type { AnswerDocument, CapturedAnswerPayload, CaptureAcknowledgement } from "../../src/shared/types.js";
 
 const fixture = (name: string): string => readFileSync(
@@ -116,5 +118,41 @@ describe("ChatGPT adapter contract", () => {
     const answer = await extractSelectedAnswer(changedMarkup, "https://chatgpt.com/c/abc");
     expect(answer.sourceMessageId).toMatch(/^assistant-/);
     expect(answer.markdown).toContain("### Picked answer");
+  });
+
+  test("captures Tencent Yuanbao answer bubbles without the prompt or toolbar", async () => {
+    document.body.innerHTML = `
+      <div class="agent-chat__bubble agent-chat__bubble--human"><div class="agent-chat__bubble__content">User prompt</div></div>
+      <div class="agent-chat__bubble agent-chat__bubble--ai" id="yuanbao-answer"><div class="agent-chat__bubble__content"><h2>元宝回答</h2><p>详细内容</p></div><div class="agent-chat__toolbar"><button class="agent-chat__toolbar__copy">复制</button></div></div>`;
+    const url = "https://yuanbao.tencent.com/chat/123";
+    const answer = await extractLatestAnswer(document, url);
+    expect(answer).toMatchObject({ provider: "yuanbao", sourceUrl: url, sourceMessageId: "yuanbao-answer" });
+    expect(answer?.markdown).toContain("## 元宝回答");
+    expect(answer?.markdown).not.toContain("User prompt");
+    expect(answer?.markdown).not.toContain("复制");
+    expect(findAssistantMessage(document.querySelector(".agent-chat__bubble--human"), url)).toBeNull();
+  });
+
+  test("captures only Doubao receive messages", async () => {
+    document.body.innerHTML = `
+      <div data-testid="send_message">User prompt</div>
+      <div data-testid="receive_message" id="doubao-answer"><div class="markdown"><p>豆包回答</p></div><button>复制</button></div>`;
+    const url = "https://www.doubao.com/chat/123";
+    const answer = await extractAnswerFromTarget(document.querySelector("#doubao-answer p"), url);
+    expect(answer).toMatchObject({ provider: "doubao", sourceUrl: url, sourceMessageId: "doubao-answer" });
+    expect(answer?.markdown).toBe("豆包回答");
+    expect(await extractLatestAnswer(document, url)).toMatchObject({ provider: "doubao" });
+    expect(findAssistantMessage(document.querySelector('[data-testid="send_message"]'), url)).toBeNull();
+  });
+
+  test("captures Doubao's newer receive bubble markup", async () => {
+    document.body.innerHTML = `
+      <div class="bg-g-send-msg-bubble">User prompt</div>
+      <div class="bg-g-receive-msg-bubble" id="current-reply"><div class="markdown"><p>New Doubao answer</p></div></div>`;
+    const url = "https://www.doubao.com/chat/123";
+    expect(await extractLatestAnswer(document, url)).toMatchObject({
+      provider: "doubao", sourceMessageId: "current-reply", markdown: "New Doubao answer"
+    });
+    expect(findAssistantMessage(document.querySelector(".bg-g-send-msg-bubble"), url)).toBeNull();
   });
 });

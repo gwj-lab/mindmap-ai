@@ -162,6 +162,65 @@ test("loads the sandboxed ChatGPT adapter and enters picker fallback", async () 
   }
 });
 
+test("opens independent chat tabs, keeps pages while switching, and restores saved tabs", async () => {
+  const projectDir = await mkdtemp(path.join(tmpdir(), "mindmap-ai-providers-"));
+  const userDataDir = await mkdtemp(path.join(tmpdir(), "mindmap-ai-user-data-"));
+  let application = await launchWithUserData(userDataDir);
+  try {
+    await application.evaluate(({ dialog }, selectedPath) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selectedPath] });
+    }, projectDir);
+    const page = await application.firstWindow();
+    await page.getByRole("button", { name: "新建工作区", exact: true }).first().click();
+    const nativeIds = (provider: string) => application.evaluate(({ webContents, session }, selectedProvider) =>
+      webContents.getAllWebContents().filter((contents) => contents.session === session.fromPartition(`persist:provider-${selectedProvider}`)).map((contents) => contents.id), provider
+    );
+    const visibleNativeIds = () => application.evaluate(({ BrowserWindow, WebContentsView, session }) =>
+      BrowserWindow.getAllWindows()[0].contentView.children.flatMap((view) =>
+        view instanceof WebContentsView && view.getVisible() && view.webContents.session !== session.defaultSession ? [view.webContents.id] : []
+      )
+    );
+    const chatgptIds = await nativeIds("chatgpt");
+    const picker = page.getByRole("combobox", { name: "新建问答标签页" });
+    await picker.selectOption("yuanbao");
+    await expect(page.getByRole("tab", { name: "腾讯元宝", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect.poll(() => nativeIds("yuanbao")).toHaveLength(1);
+    const yuanbaoIds = await nativeIds("yuanbao");
+    await picker.selectOption("doubao");
+    await expect(page.getByRole("tab", { name: "豆包", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect.poll(() => nativeIds("doubao")).toHaveLength(1);
+    const doubaoIds = await nativeIds("doubao");
+    await expect.poll(visibleNativeIds).toEqual(doubaoIds);
+    expect(await nativeIds("chatgpt")).toEqual(chatgptIds);
+    expect(await nativeIds("yuanbao")).toEqual(yuanbaoIds);
+    await page.getByRole("tab", { name: "ChatGPT", exact: true }).click();
+    await expect.poll(visibleNativeIds).toEqual(chatgptIds);
+    expect(await nativeIds("chatgpt")).toEqual(chatgptIds);
+    const yuanbaoTab = page.getByRole("tab", { name: "腾讯元宝", exact: true });
+    await yuanbaoTab.click();
+    await yuanbaoTab.hover();
+    await yuanbaoTab.locator(".flexlayout__tab_button_trailing").click();
+    await expect.poll(() => nativeIds("yuanbao")).toHaveLength(0);
+    await picker.selectOption("yuanbao");
+    await expect.poll(() => nativeIds("yuanbao")).toHaveLength(1);
+    await expect.poll(visibleNativeIds).toEqual(await nativeIds("yuanbao"));
+    await page.screenshot({ path: "test-results/ai-provider-tabs.png" });
+    await page.getByRole("button", { name: "保存", exact: true }).click();
+    await expect(page.getByText("所有更改已保存", { exact: true })).toBeVisible();
+    await application.close();
+    application = await launchWithUserData(userDataDir);
+    const restored = await application.firstWindow();
+    await expect(restored.getByRole("tab", { name: "ChatGPT", exact: true })).toBeVisible();
+    await expect(restored.getByRole("tab", { name: "豆包", exact: true })).toBeVisible();
+    await expect(restored.getByRole("tab", { name: "腾讯元宝", exact: true })).toBeVisible();
+    await expect.poll(visibleNativeIds).toEqual(await nativeIds("yuanbao"));
+  } finally {
+    await application.close();
+    await rm(projectDir, { recursive: true, force: true });
+    await rm(userDataDir, { recursive: true, force: true });
+  }
+});
+
 test("creates and renders the real docked mind-map workspace", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "mindmap-ai-e2e-"));
   const userDataDir = await mkdtemp(path.join(tmpdir(), "mindmap-ai-user-data-"));
@@ -176,7 +235,7 @@ test("creates and renders the real docked mind-map workspace", async () => {
     await page.getByRole("button", { name: "新建工作区", exact: true }).first().click();
 
     await expect(page.locator("#flexlayout-tabbutton-mindmap")).toBeVisible();
-    await expect(page.getByText("ChatGPT 网页端", { exact: true })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "ChatGPT", exact: true })).toBeVisible();
     await expect(page.getByText("还没有候选节点", { exact: true })).toBeVisible();
     await expect(page.locator(".mindmap-canvas svg")).toBeVisible();
     await expect(page.getByText(path.basename(projectDir), { exact: true })).toBeVisible();

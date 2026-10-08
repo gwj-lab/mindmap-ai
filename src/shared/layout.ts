@@ -23,9 +23,12 @@ export const DEFAULT_DOCK_LAYOUT = {
         children: [
           {
             type: "tabset",
+            id: "ai-tabs",
+            config: { aiTabs: true },
+            enableDeleteWhenEmpty: false,
             weight: 72,
             selected: 0,
-            children: [{ type: "tab", name: "ChatGPT", component: "ai", id: "ai" }]
+            children: [{ type: "tab", name: "ChatGPT", component: "ai", id: "ai", config: { provider: "chatgpt" } }]
           },
           {
             type: "tabset",

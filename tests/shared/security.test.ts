@@ -5,6 +5,8 @@ describe("remote content security", () => {
   test("keeps trusted ChatGPT and OAuth hosts inside the sandbox", () => {
     expect(classifyNavigation("https://chatgpt.com/c/123")).toBe("internal");
     expect(classifyNavigation("https://auth.openai.com/authorize")).toBe("internal");
+    expect(classifyNavigation("https://yuanbao.tencent.com/chat/123")).toBe("internal");
+    expect(classifyNavigation("https://www.doubao.com/chat/123")).toBe("internal");
     expect(classifyNavigation("https://accounts.google.com/o/oauth2/v2/auth")).toBe("oauth");
   });
 

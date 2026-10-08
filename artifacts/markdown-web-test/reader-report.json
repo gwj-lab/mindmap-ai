@@ -1,0 +1,115 @@
+{
+  "code": [
+    "// 异步函数测试\nasync function fetchValue() {\n  const message = \"Markdown test\";\n  const count = 2026;\n\n  await Promise.resolve();\n  console.log(message, count);\n  return \"$100\";\n}\n\nfetchValue();\n",
+    "def square(x):\n    \"\"\"Return x squared.\"\"\"\n    result = x ** 2\n    print(\"result =\", result)\n    return result\n\nsquare(5)\n",
+    "LaTeX literal: \\frac{a}{b}, x^{2}, \\int_0^1 x\\,dx\nMarkdown literal: **bold** _italic_ [link](https://example.com)\nHeading literal: ## This should NOT become a heading\nInline math literal: $E = mc^2$\n"
+  ],
+  "mathErrors": 0,
+  "math": [
+    {
+      "height": 53.734375
+    },
+    {
+      "height": 55.921875
+    },
+    {
+      "height": 54.453125
+    },
+    {
+      "height": 54.453125
+    },
+    {
+      "height": 90.234375
+    },
+    {
+      "height": 60.234375
+    },
+    {
+      "height": 32.21875
+    }
+  ],
+  "align": [
+    "left",
+    "center",
+    "right",
+    "left",
+    "left",
+    "left",
+    "center"
+  ],
+  "citations": [
+    "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/async_function",
+    "https://katex.org/docs/supported"
+  ],
+  "images": [
+    {
+      "alt": "",
+      "loaded": true
+    },
+    {
+      "alt": "",
+      "loaded": false
+    },
+    {
+      "alt": "Python 标志",
+      "loaded": true
+    }
+  ],
+  "checkboxes": [
+    true,
+    true,
+    false,
+    false
+  ],
+  "headings": [
+    "Markdown 保存效果全项测试（2026-10-05）",
+    "1. 标题与基础文本",
+    "三级标题示例",
+    "四级标题示例",
+    "2. 列表",
+    "3. 引用与分隔线",
+    "4. 代码块",
+    "5. 四列表格",
+    "6. 数学公式",
+    "7. 网页链接与真实来源引用",
+    "8. 图片",
+    "9. 最终验收表"
+  ],
+  "mathClipping": [
+    {
+      "strutHeight": 19.359375,
+      "topClipped": 0,
+      "bottomClipped": 0
+    },
+    {
+      "strutHeight": 47.921875,
+      "topClipped": 0,
+      "bottomClipped": 0.015625
+    },
+    {
+      "strutHeight": 46.453125,
+      "topClipped": 0,
+      "bottomClipped": 0
+    },
+    {
+      "strutHeight": 13.21875,
+      "topClipped": 0,
+      "bottomClipped": 0
+    },
+    {
+      "strutHeight": 82.234375,
+      "topClipped": 0,
+      "bottomClipped": 0
+    },
+    {
+      "strutHeight": 13.21875,
+      "topClipped": 0.515625,
+      "bottomClipped": 0
+    },
+    {
+      "strutHeight": 13.21875,
+      "topClipped": 0,
+      "bottomClipped": 0
+    }
+  ]
+}

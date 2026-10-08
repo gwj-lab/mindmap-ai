@@ -75,7 +75,7 @@ function api(overrides: Partial<DesktopApi["project"]> = {}): DesktopApi {
       ...overrides
     },
     ai: {
-      setPanelBounds: vi.fn(), setPanelVisible: vi.fn(), captureLatest: vi.fn(), pickAnswer: vi.fn(), setHoverCapture: vi.fn(),
+      syncTabs: vi.fn(), setPanelBounds: vi.fn(), setPanelVisible: vi.fn(), captureLatest: vi.fn(), pickAnswer: vi.fn(), setHoverCapture: vi.fn(),
       setExpansionPrompt: vi.fn(),
       beginLocalDrag: vi.fn(), endLocalDrag: vi.fn(),
       onAnswerCaptured: vi.fn(() => () => undefined), onAdapterError: vi.fn(() => () => undefined)

@@ -1,0 +1,73 @@
+{
+  "provider": "doubao",
+  "sample": "real webpage DOM replay",
+  "headings": [
+    "格式保存全项验收（2026-10-08）",
+    "一级标题：Markdown 格式全项验收",
+    "二级标题：基础文本样式测试",
+    "三级标题：多语言与样式兼容",
+    "四级标题：特殊文本格式",
+    "五级标题：细节格式校验",
+    "列表、引用与分隔线测试",
+    "多语言独立代码块测试",
+    "四列对齐表格",
+    "LaTeX 数学公式测试",
+    "链接、图片与脚注",
+    "流程图与特殊字符",
+    "验收清单"
+  ],
+  "codeBlocks": 4,
+  "formulas": 13,
+  "displayFormulas": 7,
+  "mathErrors": 0,
+  "tableAlign": [
+    "left",
+    "center",
+    "right",
+    "left"
+  ],
+  "tableBreaks": 1,
+  "images": [
+    {
+      "alt": "image",
+      "src": "https://www.python.org/static/community_logos/python-logo.png",
+      "maxWidth": "100%"
+    }
+  ],
+  "tasks": [
+    true,
+    true,
+    false,
+    false
+  ],
+  "mathClipping": [
+    {
+      "top": 0,
+      "bottom": 0
+    },
+    {
+      "top": 0,
+      "bottom": 0
+    },
+    {
+      "top": 0,
+      "bottom": 0
+    },
+    {
+      "top": 0,
+      "bottom": 0
+    },
+    {
+      "top": 0,
+      "bottom": 0
+    },
+    {
+      "top": 0,
+      "bottom": 0
+    },
+    {
+      "top": 0,
+      "bottom": 0
+    }
+  ]
+}

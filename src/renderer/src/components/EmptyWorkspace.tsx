@@ -12,7 +12,7 @@ export function EmptyWorkspace({ onCreate, onOpen }: { onCreate(): void; onOpen(
         <button onClick={onOpen}><FolderOpen size={18} />打开工作区</button>
       </div>
       <div className="empty-steps">
-        <span>01 · 在右侧与 ChatGPT 对话</span>
+        <span>01 · 在右侧选择平台并对话</span>
         <span>02 · 捕获回答到候选托盘</span>
         <span>03 · 拖进导图继续组织</span>
       </div>

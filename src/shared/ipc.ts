@@ -33,6 +33,7 @@ export const IPC = {
   projectWriteAnswer: "project:write-answer",
   aiSetPanelBounds: "ai:set-panel-bounds",
   aiSetPanelVisible: "ai:set-panel-visible",
+  aiSyncTabs: "ai:sync-tabs",
   aiCaptureLatest: "ai:capture-latest",
   aiPickAnswer: "ai:pick-answer",
   aiSetHoverCapture: "ai:set-hover-capture",
@@ -46,6 +47,13 @@ export const IPC = {
 } as const;
 
 const projectIdSchema = z.string().uuid();
+export const aiTabIdSchema = z.string().min(1).max(128);
+export const aiTabsSchema = z.array(z.object({
+  id: aiTabIdSchema,
+  provider: z.enum(["chatgpt", "yuanbao", "doubao"])
+}).strict()).max(64).refine((tabs) => new Set(tabs.map((tab) => tab.id)).size === tabs.length, {
+  message: "Duplicate AI tab identifiers"
+});
 const projectNameSchema = z.string().trim().min(1).max(120);
 
 export const publicSettingsUpdateRequestSchema = z.object({
@@ -103,11 +111,16 @@ export const projectPermanentDeleteRequestSchema = z.object({
 }).strict();
 
 export const capturedAnswerPayloadSchema = z.object({
-  provider: z.literal("chatgpt"),
-  sourceUrl: z.string().url().startsWith("https://chatgpt.com/"),
+  provider: z.enum(["chatgpt", "yuanbao", "doubao"]),
+  sourceUrl: z.string().url(),
   sourceMessageId: z.string().min(1).max(256),
   markdown: z.string().trim().min(1).max(5_000_000)
-});
+}).refine((payload) => {
+  const hostname = new URL(payload.sourceUrl).hostname;
+  return payload.sourceUrl.startsWith("https://") && hostname === {
+    chatgpt: "chatgpt.com", yuanbao: "yuanbao.tencent.com", doubao: "www.doubao.com"
+  }[payload.provider];
+}, { message: "Provider and source URL do not match" });
 
 export const captureAcknowledgementSchema = z.discriminatedUnion("status", [
   z.object({

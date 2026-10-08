@@ -58,7 +58,7 @@ export function htmlToMarkdown(root: Element): string {
       if (!safeLink(icon.getAttribute("src") ?? "")) icon.remove();
     });
   });
-  clone.querySelectorAll("script,style,button,[data-markdown-copy='exclude'],[data-testid*='copy'],[aria-label*='Copy'],[aria-label*='复制']")
+  clone.querySelectorAll("script,style,button,.agent-chat__toolbar,[data-markdown-copy='exclude'],[data-testid*='copy'],[aria-label*='Copy'],[aria-label*='复制']")
     .forEach((element) => element.remove());
 
   clone.querySelectorAll(".katex-display, mjx-container[display='true']").forEach((element) => {

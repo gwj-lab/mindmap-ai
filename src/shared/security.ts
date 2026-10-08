@@ -3,7 +3,7 @@ import type { PanelBounds } from "./types.js";
 
 export type NavigationClass = "internal" | "oauth" | "external" | "blocked";
 
-const INTERNAL_HOSTS = new Set(["chatgpt.com", "openai.com", "auth.openai.com"]);
+const INTERNAL_HOSTS = new Set(["chatgpt.com", "openai.com", "auth.openai.com", "yuanbao.tencent.com", "www.doubao.com"]);
 const OAUTH_HOSTS = new Set([
   "accounts.google.com",
   "login.microsoftonline.com",

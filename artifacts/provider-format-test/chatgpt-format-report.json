@@ -1,0 +1,85 @@
+{
+  "provider": "chatgpt",
+  "sample": "real webpage DOM replay",
+  "headings": [
+    "Markdown 保存效果全项测试（2026-10-05）",
+    "1. 标题与基础文本",
+    "三级标题示例",
+    "四级标题示例",
+    "2. 列表",
+    "3. 引用与分隔线",
+    "4. 代码块",
+    "5. 四列表格",
+    "6. 数学公式",
+    "7. 网页链接与真实来源引用",
+    "8. 图片",
+    "9. 最终验收表"
+  ],
+  "codeBlocks": 3,
+  "formulas": 12,
+  "displayFormulas": 7,
+  "mathErrors": 0,
+  "tableAlign": [
+    "left",
+    "center",
+    "right",
+    "left",
+    "left",
+    "left",
+    "center"
+  ],
+  "tableBreaks": 0,
+  "images": [
+    {
+      "alt": "",
+      "src": "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https%3A%2F%2Fdeveloper.mozilla.org&size=32&drop_404_icon=true",
+      "maxWidth": "14px"
+    },
+    {
+      "alt": "",
+      "src": "https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https%3A%2F%2Fkatex.org&size=32&drop_404_icon=true",
+      "maxWidth": "14px"
+    },
+    {
+      "alt": "Python 标志",
+      "src": "https://www.python.org/static/community_logos/python-logo.png",
+      "maxWidth": "min(100%, 200px)"
+    }
+  ],
+  "tasks": [
+    true,
+    true,
+    false,
+    false
+  ],
+  "mathClipping": [
+    {
+      "top": 0,
+      "bottom": 0
+    },
+    {
+      "top": 0,
+      "bottom": 0.015625
+    },
+    {
+      "top": 0,
+      "bottom": 0
+    },
+    {
+      "top": 0,
+      "bottom": 0
+    },
+    {
+      "top": 0,
+      "bottom": 0
+    },
+    {
+      "top": 0.515625,
+      "bottom": 0
+    },
+    {
+      "top": 0,
+      "bottom": 0
+    }
+  ]
+}

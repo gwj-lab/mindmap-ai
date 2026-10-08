@@ -1,4 +1,9 @@
-export type ProviderId = "chatgpt";
+export type ProviderId = "chatgpt" | "yuanbao" | "doubao";
+
+export interface AiTab {
+  id: string;
+  provider: ProviderId;
+}
 
 export interface AnswerMetadata {
   id: string;
@@ -258,12 +263,13 @@ export interface DesktopApi {
     export(projectId: string): Promise<boolean>;
   };
   ai: {
-    setPanelBounds(bounds: PanelBounds): void;
-    setPanelVisible(visible: boolean): void;
-    captureLatest(): void;
-    pickAnswer(): void;
-    setHoverCapture(enabled: boolean): void;
-    setExpansionPrompt(prompt: string): void;
+    syncTabs(tabs: AiTab[]): void;
+    setPanelBounds(bounds: PanelBounds, tabId?: string): void;
+    setPanelVisible(visible: boolean, tabId?: string): void;
+    captureLatest(tabId?: string): void;
+    pickAnswer(tabId?: string): void;
+    setHoverCapture(enabled: boolean, tabId?: string): void;
+    setExpansionPrompt(prompt: string, tabId?: string): void;
     beginLocalDrag(): void;
     endLocalDrag(): void;
     onAnswerCaptured(listener: (acknowledgement: Extract<CaptureAcknowledgement, { status: "captured" }>) => void): () => void;

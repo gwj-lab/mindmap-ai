@@ -1,6 +1,7 @@
 import { ipcRenderer } from "electron";
 import type { CapturedAnswerPayload, CaptureAcknowledgement } from "../shared/types.js";
-import { CaptureDelivery, extractAnswerFromTarget, extractLatestAnswer, extractSelectedAnswer, findAssistantMessage } from "./chatgpt-adapter.js";
+import { CaptureDelivery } from "./chatgpt-adapter.js";
+import { extractAnswerFromTarget, extractLatestAnswer, findAssistantMessage } from "./answer-adapter.js";
 import { HoverCaptureController } from "./hover-capture.js";
 
 const IPC = {
@@ -42,7 +43,7 @@ function activatePicker(): void {
   `;
   document.head.append(style);
   let target: Element | null = null;
-  const findTarget = (eventTarget: EventTarget | null): Element | null => findAssistantMessage(eventTarget);
+  const findTarget = (eventTarget: EventTarget | null): Element | null => findAssistantMessage(eventTarget, location.href);
   const onMove = (event: MouseEvent): void => {
     target?.classList.remove("mindmap-ai-pick-target");
     target = findTarget(event.target);
@@ -62,14 +63,8 @@ function activatePicker(): void {
     const selected = findTarget(event.target);
     cleanup();
     if (!selected) return;
-    void extractSelectedAnswer(
-      selected.querySelector(
-        "[data-selected-text-overlay-target][data-markdown-text-style], [data-markdown-text-style], .markdown, [data-message-content], [class*='markdown']"
-      ) ?? selected,
-      location.href,
-      selected
-    )
-      .then(emitCapture)
+    void extractAnswerFromTarget(selected, location.href)
+      .then((payload) => { if (payload) return emitCapture(payload); })
       .catch((error: unknown) => ipcRenderer.send(
         IPC.aiAdapterErrorFromPage,
         error instanceof Error ? error.message : "点选回答失败"
@@ -89,7 +84,7 @@ window.addEventListener("DOMContentLoaded", () => {
     const payload = await extractAnswerFromTarget(message, location.href);
     if (!payload) return { status: "failed", message: "回答仍在生成，请稍候" };
     return emitCapture(payload);
-  });
+  }, true, location.href);
   hoverController.start();
 });
 

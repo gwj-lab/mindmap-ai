@@ -1,0 +1,88 @@
+{
+  "provider": "yuanbao",
+  "sample": "real webpage DOM replay",
+  "headings": [
+    "一级标题：格式保存全项验收（2026-10-08）",
+    "二级标题：基础文本与排版",
+    "三级标题：样式展示",
+    "四级标题：多语言混合",
+    "五级标题：内联元素",
+    "六级标题：特殊符号",
+    "二级标题：列表与引用",
+    "无序列表",
+    "有序列表（从3开始）",
+    "任务列表",
+    "引用",
+    "二级标题：代码块",
+    "JavaScript 代码块",
+    "Python 代码块",
+    "Text 代码块",
+    "二级标题：表格",
+    "二级标题：数学公式",
+    "行内公式",
+    "独立公式",
+    "二级标题：链接、图片与脚注",
+    "二级标题：Mermaid 与特殊字符",
+    "Mermaid 流程图",
+    "特殊字符",
+    "验收清单"
+  ],
+  "codeBlocks": 4,
+  "formulas": 13,
+  "displayFormulas": 7,
+  "mathErrors": 0,
+  "tableAlign": [
+    "left",
+    "center",
+    "right",
+    "left"
+  ],
+  "tableBreaks": 1,
+  "images": [],
+  "tasks": [
+    true,
+    true,
+    false,
+    false,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+  ],
+  "mathClipping": [
+    {
+      "top": 0,
+      "bottom": 0
+    },
+    {
+      "top": 0,
+      "bottom": 0
+    },
+    {
+      "top": 0,
+      "bottom": 0
+    },
+    {
+      "top": 0,
+      "bottom": 0
+    },
+    {
+      "top": 0,
+      "bottom": 0
+    },
+    {
+      "top": 0,
+      "bottom": 0
+    },
+    {
+      "top": 0,
+      "bottom": 0
+    }
+  ]
+}

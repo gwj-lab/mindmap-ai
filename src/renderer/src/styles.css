@@ -141,6 +141,9 @@ button:disabled { opacity: .4; cursor: default; }
 .provider-state { display: inline-flex; align-items: center; gap: 7px; margin-right: auto; color: #314e53; font-size: 11px; font-weight: 600; }
 .provider-state i { width: 7px; height: 7px; border-radius: 50%; background: #82989b; }
 .provider-state i.online { background: #23a88f; box-shadow: 0 0 0 3px #23a88f1c; }
+.ai-add-tab { appearance: none; width: 28px; height: 27px; padding: 0; border: 0; border-radius: 5px; color: #486d69; background: transparent; font: 19px/1 system-ui; text-align: center; cursor: pointer; }
+.ai-add-tab:hover, .ai-add-tab:focus-visible { color: #17343a; background: #d5e4e1; }
+.ai-add-tab option { color: #314e53; background: white; font-size: 12px; }
 .security-chip { display: inline-flex; align-items: center; gap: 4px; color: #678084; font-size: 9px; }
 .hover-capture-toggle { display: inline-flex; align-items: center; gap: 4px; color: #526d71; font-size: 9px; cursor: pointer; }
 .hover-capture-toggle input { width: 12px; height: 12px; accent-color: var(--teal); }
@@ -355,3 +358,7 @@ kbd { display: inline-block; min-width: 27px; margin-right: 4px; padding: 2px 4p
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; } }
 @media (max-width: 1100px) { .security-chip { display: none; } .empty-steps { gap: 12px; } .api-settings-page { padding: 14px; } .api-settings-card { padding: 15px; } }
+.markdown-preview[data-provider="doubao"] a > img,
+.markdown-preview[data-provider="yuanbao"] a > img { width: auto; height: auto; max-width: 100%; max-height: none; }
+.markdown-preview[data-provider="doubao"] .katex-display,
+.markdown-preview[data-provider="yuanbao"] .katex-display { padding-block: .5em; }

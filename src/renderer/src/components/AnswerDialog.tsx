@@ -123,7 +123,7 @@ export const AnswerDialog = memo(function AnswerDialog(props: AnswerDialogProps)
             />
           </div>
         )}
-        <MarkdownPreview body={mode === "preview" ? body : previewBody} />
+        <MarkdownPreview body={mode === "preview" ? body : previewBody} provider={answer?.metadata.provider} />
       </div>
       <footer>
         <span>{answer?.metadata.provider ?? "chatgpt"}</span>

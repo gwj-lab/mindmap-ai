@@ -12,6 +12,8 @@ import { SettingsStore } from "./settings-store.js";
 import { TitleService } from "./title-service.js";
 import {
   IPC,
+  aiTabIdSchema,
+  aiTabsSchema,
   apiKeyRequestSchema,
   connectionTestRequestSchema,
   capturedAnswerPayloadSchema,
@@ -35,7 +37,6 @@ let activeWorkspaceStore: WorkspaceStore | null = null;
 let settingsStore: SettingsStore | null = null;
 let titleService: TitleService | null = null;
 let recentWorkspaceStore: RecentWorkspaceStore | null = null;
-let expansionPrompt = "";
 
 function assertLocalSender(event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent): void {
   if (!mainWindow || !isTrustedIpcSender(event.sender, mainWindow.webContents)) throw new Error("Untrusted IPC sender");
@@ -269,32 +270,36 @@ function registerIpc(): void {
     return requireStore().writeAnswer(answer);
   });
 
-  ipcMain.on(IPC.aiSetPanelBounds, (event, bounds) => {
+  ipcMain.on(IPC.aiSetPanelBounds, (event, bounds, tabId) => {
     assertLocalSender(event);
-    aiManager?.setBounds(validatePanelBounds(bounds));
+    aiManager?.setBounds(validatePanelBounds(bounds), aiTabIdSchema.parse(tabId ?? "ai"));
   });
-  ipcMain.on(IPC.aiSetPanelVisible, (event, visible: unknown) => {
+  ipcMain.on(IPC.aiSetPanelVisible, (event, visible: unknown, tabId) => {
     assertLocalSender(event);
     if (typeof visible !== "boolean") throw new Error("Invalid visibility value");
-    aiManager?.setVisible(visible);
+    aiManager?.setVisible(visible, tabId === undefined ? undefined : aiTabIdSchema.parse(tabId));
   });
-  ipcMain.on(IPC.aiCaptureLatest, (event) => {
+  ipcMain.on(IPC.aiSyncTabs, (event, tabs: unknown) => {
     assertLocalSender(event);
-    aiManager?.requestCapture();
+    aiManager?.syncTabs(aiTabsSchema.parse(tabs));
   });
-  ipcMain.on(IPC.aiPickAnswer, (event) => {
+  ipcMain.on(IPC.aiCaptureLatest, (event, tabId) => {
     assertLocalSender(event);
-    aiManager?.requestPicker();
+    aiManager?.requestCapture(aiTabIdSchema.parse(tabId ?? "ai"));
   });
-  ipcMain.on(IPC.aiSetHoverCapture, (event, enabled: unknown) => {
+  ipcMain.on(IPC.aiPickAnswer, (event, tabId) => {
+    assertLocalSender(event);
+    aiManager?.requestPicker(aiTabIdSchema.parse(tabId ?? "ai"));
+  });
+  ipcMain.on(IPC.aiSetHoverCapture, (event, enabled: unknown, tabId) => {
     assertLocalSender(event);
     if (typeof enabled !== "boolean") throw new Error("Invalid hover capture state");
-    aiManager?.setHoverCapture(enabled);
+    aiManager?.setHoverCapture(enabled, aiTabIdSchema.parse(tabId ?? "ai"));
   });
-  ipcMain.on(IPC.aiSetExpansionPrompt, (event, prompt: unknown) => {
+  ipcMain.on(IPC.aiSetExpansionPrompt, (event, prompt: unknown, tabId) => {
     assertLocalSender(event);
     if (typeof prompt !== "string" || prompt.length > 4000) throw new Error("Invalid expansion prompt");
-    expansionPrompt = prompt.trim();
+    aiManager?.setExpansionPrompt(prompt.trim(), aiTabIdSchema.parse(tabId ?? "ai"));
   });
   ipcMain.on(IPC.aiBeginLocalDrag, (event) => {
     assertLocalSender(event);
@@ -305,20 +310,24 @@ function registerIpc(): void {
     aiManager?.setDragging(false);
   });
   ipcMain.handle(IPC.aiCapturedFromPage, async (event, rawPayload) => {
-    if (!aiManager || event.sender !== aiManager.view.webContents) throw new Error("Untrusted capture sender");
+    const context = aiManager?.getCaptureContext(event.sender);
+    if (!context) throw new Error("Untrusted capture sender");
+    const payload = capturedAnswerPayloadSchema.parse(rawPayload);
+    if (payload.provider !== context.provider) throw new Error("Capture provider does not match tab");
+    if (new URL(payload.sourceUrl).hostname !== new URL(event.sender.getURL()).hostname) throw new Error("Capture source does not match page");
     const acknowledgement = await new CaptureService(requireStore(), {
-      expansionPrompt,
+      expansionPrompt: context.expansionPrompt,
       portable: activeWorkspaceStore !== null,
       ...(settingsStore ? { settingsStore } : {}),
       ...(titleService ? { titleService } : {})
-    }).capture(capturedAnswerPayloadSchema.parse(rawPayload));
+    }).capture(payload);
     if (acknowledgement.status === "captured") {
       mainWindow?.webContents.send(IPC.aiAnswerCaptured, acknowledgement);
     }
     return acknowledgement;
   });
   ipcMain.on(IPC.aiAdapterErrorFromPage, (event, message: unknown) => {
-    if (!aiManager || event.sender !== aiManager.view.webContents) return;
+    if (!aiManager?.getCaptureContext(event.sender)) return;
     mainWindow?.webContents.send(IPC.aiAdapterError, typeof message === "string" ? message.slice(0, 500) : "回答提取失败");
   });
 }
@@ -339,7 +348,9 @@ async function createWindow(): Promise<void> {
       webSecurity: true
     }
   });
-  aiManager = new AiViewManager(mainWindow, path.join(currentDir, "../preload/chatgpt.cjs"));
+  aiManager = new AiViewManager(mainWindow, path.join(currentDir, "../preload/chatgpt.cjs"), (message) => {
+    mainWindow?.webContents.send(IPC.aiAdapterError, message);
+  });
   mainWindow.on("close", () => {
     aiManager?.destroy();
     aiManager = null;
@@ -352,9 +363,6 @@ async function createWindow(): Promise<void> {
   } else {
     await mainWindow.loadFile(path.join(currentDir, "../renderer/index.html"));
   }
-  void aiManager.load().catch((error: unknown) => {
-    mainWindow?.webContents.send(IPC.aiAdapterError, error instanceof Error ? error.message : "ChatGPT 加载失败");
-  });
 }
 
 app.whenReady().then(async () => {
