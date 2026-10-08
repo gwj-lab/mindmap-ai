@@ -6,6 +6,8 @@ export interface AiTab {
 }
 
 export interface AnswerMetadata {
+  conceptId?: string;
+  tags?: string[];
   id: string;
   provider: ProviderId;
   title: string;
@@ -22,6 +24,7 @@ export interface AnswerDocument {
 }
 
 export interface CandidateNode {
+  conceptId?: string;
   id: string;
   answerId: string;
   title: string;
@@ -228,6 +231,17 @@ export interface AiConnectionTestResult {
 }
 
 export interface DesktopApi {
+  concepts: {
+    get(): Promise<import("./concepts.js").ConceptLibrary>;
+    settings(settings: import("./concepts.js").ConceptSettings): Promise<import("./concepts.js").ConceptLibrary>;
+    prepare(request: import("./concepts.js").ConceptRequest): Promise<import("./concepts.js").ConceptJob>;
+    retry(id: string): Promise<import("./concepts.js").ConceptJob>;
+    run(id: string): Promise<void>;
+    update(id: string, action: "trash" | "restore" | "delete" | "rename", title?: string): Promise<import("./concepts.js").ConceptLibrary>;
+    onRequest(listener: (request: import("./concepts.js").ConceptRequest) => void): () => void;
+    onChanged(listener: (workspaceId: string) => void): () => void;
+    onOpen(listener: (answerId: string) => void): () => void;
+  };
   settings: {
     getPublicSettings(): Promise<PublicAiSettings>;
     updatePublicSettings(update: PublicAiSettingsUpdate, confirmBaseUrlChange: boolean): Promise<PublicAiSettings>;

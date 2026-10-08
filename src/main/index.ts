@@ -10,6 +10,7 @@ import { exportStandaloneProject } from "./project-exporter.js";
 import { isTrustedIpcSender } from "./ipc-guards.js";
 import { SettingsStore } from "./settings-store.js";
 import { TitleService } from "./title-service.js";
+import { registerConceptIpc } from "./concept-ipc.js";
 import {
   IPC,
   aiTabIdSchema,
@@ -82,6 +83,7 @@ async function selectProjectDirectory(title: string): Promise<string | null> {
 }
 
 function registerIpc(): void {
+  const writeConceptAnswer = registerConceptIpc(() => mainWindow, () => aiManager, () => activeWorkspaceStore);
   ipcMain.handle(IPC.settingsGetPublic, (event) => {
     assertLocalSender(event);
     return requireSettingsStore().getPublicSettings();
@@ -267,7 +269,8 @@ function registerIpc(): void {
   });
   ipcMain.handle(IPC.projectWriteAnswer, async (event, answer: AnswerDocument) => {
     assertLocalSender(event);
-    return requireStore().writeAnswer(answer);
+    const store = requireStore();
+    return activeWorkspaceStore ? writeConceptAnswer(answer, (next) => store.writeAnswer(next)) : store.writeAnswer(answer);
   });
 
   ipcMain.on(IPC.aiSetPanelBounds, (event, bounds, tabId) => {

@@ -10,10 +10,17 @@ import {
   X
 } from "lucide-react";
 import type { CandidateNode, HistoryEntry, ProjectTrashEntry } from "../../../shared/types.js";
+import type { ConceptRecord } from "../../../shared/concepts.js";
 
 type TrayTab = "candidates" | "history" | "trash";
 
 interface NodeTrayProps {
+  concepts?: ConceptRecord[];
+  onConceptSettings?(): void;
+  onOpenConcept?(record: ConceptRecord): void;
+  onConceptAction?(id: string, action: "trash" | "restore" | "delete" | "rename", title?: string): void;
+  onRetryConcept?(id: string): void;
+  onShowConceptTab?(record: ConceptRecord): void;
   candidates: CandidateNode[];
   history: HistoryEntry[];
   trash: ProjectTrashEntry[];
@@ -33,6 +40,7 @@ function trashTitle(entry: ProjectTrashEntry): string {
 }
 
 export function NodeTray({
+  concepts = [], onConceptSettings, onOpenConcept, onConceptAction, onRetryConcept, onShowConceptTab,
   candidates,
   history,
   trash,
@@ -76,7 +84,7 @@ export function NodeTray({
           历史节点 <b>{history.length}</b>
         </button>
         <button role="tab" aria-selected={tab === "trash"} onClick={() => setTab("trash")}>
-          垃圾箱 <b>{trash.length}</b>
+          垃圾箱 <b>{trash.length + concepts.filter((record) => record.status === "trash").length}</b>
         </button>
       </div>
 
@@ -140,6 +148,14 @@ export function NodeTray({
               </article>
             );
           })}
+          {onConceptSettings && <section className="concept-library" aria-label="概念节点库">
+            <header><strong>概念节点 <b>{concepts.filter((record) => record.status !== "trash").length}</b></strong><button aria-label="概念生成设置" onClick={onConceptSettings}>设置</button></header>
+            {concepts.filter((record) => record.status !== "trash").length === 0 && <p className="concept-library-empty">在文档或 AI 回答中划词，再次点击原位标签生成概念。</p>}
+            {concepts.filter((record) => record.status !== "trash").map((record) => <article key={record.id} className="node-tray-card concept-node-card" data-concept-id={record.id} draggable={!readOnly && record.status === "ready"} onDragStart={(event) => { event.dataTransfer.effectAllowed = "copyMove"; event.dataTransfer.setData("application/x-mindmap-candidate", record.id); beginLocalDrag(); }} onDragEnd={endLocalDrag} onDoubleClick={() => record.status === "ready" && onOpenConcept?.(record)}>
+              <div className="node-tray-card-main"><GripVertical size={15} /><span title={record.references[0]?.selection.sentence}>{record.title}</span><small className="concept-tag">概念</small><button disabled={readOnly || record.status === "generating"} aria-label={`删除概念 ${record.title}`} onClick={() => onConceptAction?.(record.id, "trash")}><Trash2 size={14} /></button></div>
+              {record.status === "ready" ? <div className="concept-node-actions"><button aria-label={`打开概念 ${record.title}`} onClick={() => onOpenConcept?.(record)}>阅读</button><button disabled={readOnly} onClick={() => toggleExpanded(record.id)}>改名</button>{expanded.has(record.id) && <input aria-label={`概念标题 ${record.title}`} defaultValue={record.title} maxLength={160} onBlur={(event) => { const title = event.target.value.trim(); if (title && title !== record.title) onConceptAction?.(record.id, "rename", title); }} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} />}</div> : <div className="concept-node-actions"><span title={record.error}>{record.status === "generating" ? "生成中…" : record.error || "生成失败"}</span>{record.status === "failed" && <button disabled={readOnly} onClick={() => onRetryConcept?.(record.id)}>重试</button>}<button onClick={() => onShowConceptTab?.(record)}>查看生成页面</button></div>}
+            </article>)}
+          </section>}
         </div>
       )}
 
@@ -189,7 +205,8 @@ export function NodeTray({
 
       {tab === "trash" && (
         <div className="node-tray-panel" role="tabpanel" aria-label="垃圾箱">
-          {trash.length === 0 ? (
+          {concepts.filter((record) => record.status === "trash").map((record) => <article className="node-tray-card" key={record.id}><div className="node-tray-card-main"><span>{record.title}</span><small className="concept-tag">概念</small><button disabled={readOnly} aria-label={`恢复概念 ${record.title}`} onClick={() => onConceptAction?.(record.id, "restore")}><RotateCcw size={13} /></button><button disabled={readOnly} aria-label={`彻底删除概念 ${record.title}`} onClick={() => onConceptAction?.(record.id, "delete")}><X size={13} /></button></div></article>)}
+          {trash.length === 0 && !concepts.some((record) => record.status === "trash") ? (
             <div className="candidate-empty"><Trash2 size={24} /><strong>垃圾箱为空</strong></div>
           ) : trash.map((entry) => {
             const title = trashTitle(entry);

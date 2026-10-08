@@ -5,6 +5,7 @@
 ```text
 workspace-root/
 ├─ workspace.json
+├─ concepts.json
 ├─ answers/
 │  └─ <answer-id>.md
 ├─ projects/
@@ -19,6 +20,10 @@ workspace-root/
 ```
 
 `workspace.json` 保存稳定项目 UUID、父子关系、顺序、活动项目和项目垃圾箱。回答放在工作区共享的 `answers/`，因此多个项目引用同一回答时不会复制正文。项目重命名不改变目录 UUID。
+
+`concepts.json` 保存工作区共享的概念节点库、生成设置、状态及来源句子的文字定位信息。概念正文仍位于 `answers/concept-<uuid>.md`，带 `conceptId` 和 `tags: [概念]`。原文与概念通过普通 `[标题](文件ID.md)` 链接互相引用；应用的原位标注以来源文字和前后文定位，不改写原网站 DOM。
+
+概念库中的正文和来源受到引用保护，不会被当作孤立回答恢复到普通候选区。独立项目导出递归复制引用的概念与来源 Markdown；工作区生成设置和原位标注库不随独立项目导出。
 
 ## Project files
 

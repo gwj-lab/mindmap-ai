@@ -31,6 +31,8 @@ import { StylePanel } from "./components/StylePanel.js";
 import { TopBar } from "./components/TopBar.js";
 import { WorkspaceSwitcher } from "./components/WorkspaceSwitcher.js";
 import { useProject } from "./state/use-project.js";
+import { conceptCandidate, type ConceptJob, type ConceptLibrary, type ConceptRecord, type ConceptRequest, type ConceptSelection } from "../../shared/concepts.js";
+import { ConceptSettings } from "./components/ConceptSettings.js";
 
 const AiSettingsPage = lazy(() => import("./components/AiSettingsPage.js").then((module) => ({ default: module.AiSettingsPage })));
 const AnswerDialog = lazy(() => import("./components/AnswerDialog.js").then((module) => ({ default: module.AnswerDialog })));
@@ -62,6 +64,7 @@ function ProjectToast(): React.JSX.Element | null {
 }
 
 interface OpenAnswer {
+  focusSelection?: ConceptSelection;
   answerId: string;
   nodeUid: string;
 }
@@ -92,6 +95,13 @@ export function App(): React.JSX.Element {
   const [layoutOverride, setLayoutOverride] = useState<{ projectId: string; model: Model } | null>(null);
   const [controller, setController] = useState<MindMapController | null>(null);
   const [openAnswer, setOpenAnswer] = useState<OpenAnswer | null>(null);
+  const [conceptState, setConceptState] = useState<{ workspaceId: string; library: ConceptLibrary } | null>(null);
+  const conceptLibrary = conceptState?.workspaceId === workspace?.workspaceId ? conceptState?.library ?? null : null;
+  const setConceptLibrary = useCallback((library: ConceptLibrary): void => {
+    const workspaceId = useProject.getState().workspace?.workspaceId;
+    if (workspaceId) setConceptState({ workspaceId, library });
+  }, []);
+  const [conceptSettingsOpen, setConceptSettingsOpen] = useState(false);
   const [projectCreationParentId, setProjectCreationParentId] = useState<string | null | undefined>(undefined);
   const [workspacePage, setWorkspacePage] = useState<"dock" | "api-settings">("dock");
   const [workspaceSwitcherOpen, setWorkspaceSwitcherOpen] = useState(false);
@@ -106,6 +116,59 @@ export function App(): React.JSX.Element {
   const model = activeProjectId && layoutOverride?.projectId === activeProjectId
     ? layoutOverride.model
     : projectModel;
+
+  const refreshConcepts = useCallback(async (): Promise<void> => {
+    if (!window.mindmapAI.concepts || !useProject.getState().workspace) return;
+    const workspaceId = useProject.getState().workspace!.workspaceId;
+    const library = await window.mindmapAI.concepts.get();
+    if (workspaceId === useProject.getState().workspace?.workspaceId) setConceptLibrary(library);
+  }, [setConceptLibrary]);
+  const launchConcept = useCallback(async (job: ConceptJob, scope = { workspaceId: useProject.getState().workspace?.workspaceId, projectId: activeProjectId }): Promise<void> => {
+    await refreshConcepts();
+    if (scope.workspaceId !== useProject.getState().workspace?.workspaceId || scope.projectId !== useProject.getState().snapshot?.manifest.projectId) return;
+    if (job.reused) { setMessage(job.record.status === "ready" ? "已关联已有概念" : "该概念已在库中，可查看或重试"); return; }
+    let tabSetId: string | undefined;
+    model.visitNodes((node) => { if (!tabSetId && node.getType() === "tabset" && isAiTabSet(node as never)) tabSetId = node.getId(); });
+    if (!tabSetId) tabSetId = model.getActiveTabset()?.getId();
+    if (!tabSetId) throw new Error("请先恢复停靠布局后生成概念");
+    model.doAction(Actions.addNode({ type: "tab", id: job.record.tabId, name: `${AI_PROVIDERS[job.record.provider].name} · ${job.record.title}`, component: "ai", config: { provider: job.record.provider } }, tabSetId, DockLocation.CENTER, -1, !job.background));
+    window.mindmapAI.ai.syncTabs(collectAiTabs(model));
+    const current = useProject.getState().snapshot;
+    if (current) { setLayoutOverride({ projectId: current.manifest.projectId, model }); useProject.getState().setSnapshot({ ...current, state: { ...current.state, dockLayout: model.toJson() } }); }
+    await window.mindmapAI.concepts.run(job.record.id);
+    if (!job.background) setOpenAnswer(null);
+    setMessage(`正在生成概念：${job.record.title}`);
+  }, [model, activeProjectId, refreshConcepts, setMessage]);
+  const generateConcept = useCallback(async (request: ConceptRequest): Promise<void> => {
+    const scope = { workspaceId: useProject.getState().workspace?.workspaceId, projectId: useProject.getState().snapshot?.manifest.projectId };
+    try {
+      if (collectAiTabs(model).length >= 64) throw new Error("标签页已达上限，请先关闭一个页面");
+      if (useProject.getState().saveStatus === "dirty" && !await useProject.getState().saveProject()) return;
+      if (scope.workspaceId !== useProject.getState().workspace?.workspaceId || scope.projectId !== useProject.getState().snapshot?.manifest.projectId) return;
+      await launchConcept(await window.mindmapAI.concepts.prepare(request), scope);
+    }
+    catch (error) { setMessage(error instanceof Error ? error.message : "概念生成失败"); }
+  }, [launchConcept, setMessage, model]);
+  const openNote = useCallback((answerId: string, focusSelection?: ConceptSelection): void => setOpenAnswer({ answerId, nodeUid: "", focusSelection }), []);
+  const conceptAction = useCallback((id: string, action: "trash" | "restore" | "delete" | "rename", title?: string): void => {
+    if (action === "delete" && !window.confirm("从概念库彻底移除此词条？已被文档引用的 Markdown 会保留。")) return;
+    void window.mindmapAI.concepts.update(id, action, title).then(refreshConcepts).catch((error: unknown) => setMessage(error instanceof Error ? error.message : "更新概念失败"));
+  }, [setMessage, refreshConcepts]);
+  useEffect(() => {
+    const api = window.mindmapAI.concepts;
+    if (!api || !workspace) return;
+    let active = true;
+    api.get().then((library) => { if (active) setConceptState({ workspaceId: workspace.workspaceId, library }); }).catch((error: unknown) => { if (active) setMessage(error instanceof Error ? error.message : "读取概念库失败"); });
+    const unsubscribe = api.onChanged((workspaceId) => { if (workspaceId === useProject.getState().workspace?.workspaceId) void refreshConcepts(); });
+    return () => { active = false; unsubscribe(); };
+  }, [workspace, refreshConcepts, setMessage]);
+  useEffect(() => {
+    const api = window.mindmapAI.concepts; if (!api) return;
+    const request = api.onRequest((selection) => { void generateConcept(selection); });
+    const open = api.onOpen(openNote);
+    return () => { request(); open(); };
+  }, [generateConcept, openNote]);
+  useEffect(() => { window.mindmapAI.ai.setPanelVisible(!openAnswer && !conceptSettingsOpen); }, [openAnswer, conceptSettingsOpen]);
 
   useLayoutEffect(() => {
     window.mindmapAI.ai.syncTabs(collectAiTabs(model));
@@ -183,7 +246,10 @@ export function App(): React.JSX.Element {
               return { ...current, mindmap };
             })}
             onChange={(mindmap: MindMapNodeData) => updateSnapshot((current) => ({ ...current, mindmap }))}
-            onCandidateDrop={(candidateId, targetUid) => updateSnapshot((current) => attachPortableCandidate(current, candidateId, targetUid))}
+            onCandidateDrop={(candidateId, targetUid) => updateSnapshot((current) => {
+              const concept = conceptLibrary?.records.find((record) => record.id === candidateId && record.status === "ready");
+              return attachPortableCandidate(concept ? applyPersistedCandidate(current, conceptCandidate(concept)) : current, candidateId, targetUid);
+            })}
             onHistoryDrop={(historyId, targetUid) => updateSnapshot((current) => restorePortableHistory(current, historyId, targetUid))}
             onOpenAnswer={(answerId, nodeUid) => setOpenAnswer({ answerId, nodeUid })}
             onRenameNode={(nodeUid, title) => updateSnapshot((current) => renamePortableNode(current, nodeUid, title))}
@@ -219,6 +285,15 @@ export function App(): React.JSX.Element {
       case "candidates":
         return (
           <NodeTray
+            concepts={conceptLibrary?.records}
+            onConceptSettings={() => setConceptSettingsOpen(true)}
+            onConceptAction={conceptAction}
+            onOpenConcept={(record) => openNote(record.answerId)}
+            onRetryConcept={(id) => { void window.mindmapAI.concepts.retry(id).then(launchConcept).catch((error: unknown) => setMessage(error instanceof Error ? error.message : "重试失败")); }}
+            onShowConceptTab={(record: ConceptRecord) => {
+              if (model.getNodeById(record.tabId)) { model.doAction(Actions.selectTab(record.tabId)); setOpenAnswer(null); }
+              else setMessage("生成标签页已关闭，请重试以打开新页面");
+            }}
             candidates={snapshot.state.candidates}
             history={snapshot.state.history}
             trash={snapshot.state.trash}
@@ -259,7 +334,7 @@ export function App(): React.JSX.Element {
       default:
         return <div className="unknown-panel">未知模块</div>;
     }
-  }, [controller, snapshot, updateSnapshot, switchProject]);
+  }, [controller, snapshot, updateSnapshot, switchProject, conceptLibrary, conceptAction, openNote, launchConcept, model, setMessage]);
 
   const resetLayout = (): void => {
     if (snapshot?.readOnly) return;
@@ -374,13 +449,19 @@ export function App(): React.JSX.Element {
       {openAnswer && snapshot && (
         <Suspense fallback={<div className="workspace-loading">正在加载回答…</div>}>
         <AnswerDialog
+          key={openAnswer.answerId}
           {...openAnswer}
+          records={conceptLibrary?.records}
+          onGenerateConcept={generateConcept}
+          onOpenNote={openNote}
+          nodeTitle={(() => { const find = (node: MindMapNodeData): string | undefined => node.uid === openAnswer.nodeUid ? node.text : node.children.map(find).find(Boolean); return find(snapshot.mindmap); })()}
           readOnly={snapshot.readOnly}
           onClose={() => setOpenAnswer(null)}
           onRetitle={(nodeUid, title) => updateSnapshot((current) => updatePortableLinkedNodeTitle(current, nodeUid, title))}
         />
         </Suspense>
       )}
+      {conceptSettingsOpen && conceptLibrary && <ConceptSettings settings={conceptLibrary.settings} onClose={() => setConceptSettingsOpen(false)} onSave={async (settings) => { await window.mindmapAI.concepts.settings(settings); await refreshConcepts(); }} />}
       {projectCreationParentId !== undefined && (
         <ProjectNameDialog
           parentProjectId={projectCreationParentId}

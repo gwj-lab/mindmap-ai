@@ -118,6 +118,22 @@ export class AiViewManager {
     return null;
   }
 
+  getTabId(sender: Electron.WebContents): string | null {
+    for (const tab of this.#tabs.values()) if (tab.view.webContents === sender) return tab.id;
+    return null;
+  }
+
+  startConcept(tabId: string, id: string, prompt: string): void {
+    const tab = this.#tabs.get(tabId);
+    if (!tab) throw new Error("生成标签页不存在");
+    const send = (): void => { if (!tab.view.webContents.isDestroyed()) tab.view.webContents.send("concepts:generate", { id, provider: tab.provider, prompt }); };
+    if (tab.view.webContents.isLoading()) tab.view.webContents.once("did-finish-load", send); else send();
+  }
+
+  broadcastConcepts(marks: unknown): void {
+    for (const tab of this.#tabs.values()) if (!tab.view.webContents.isDestroyed()) tab.view.webContents.send("concepts:marks", marks);
+  }
+
   #sendHoverCaptureState(tab: ManagedTab): void {
     if (!tab.view.webContents.isDestroyed()) tab.view.webContents.send("ai:set-hover-capture", tab.hoverCaptureEnabled);
   }

@@ -4,6 +4,7 @@ import { mindMapNodeSchema } from "../shared/project.js";
 import { projectStateSchema } from "../shared/workspace.js";
 import { parsePortableMap } from "../shared/portable-map.js";
 import type { MindMapNodeData, ProjectState, WorkspaceManifest } from "../shared/types.js";
+import { conceptLibrarySchema } from "../shared/concepts.js";
 
 function collectTreeAnswerIds(node: MindMapNodeData, result: Set<string>): void {
   if (node.answerId) result.add(node.answerId);
@@ -76,5 +77,12 @@ export async function scanWorkspaceAnswerReferences(
       references.set(answerId, projects);
     }
   }
+  try {
+    const library = conceptLibrarySchema.parse(JSON.parse(await readFile(path.join(root, "concepts.json"), "utf8")));
+    for (const record of library.records) for (const answerId of [record.answerId, ...record.references.map((reference) => reference.sourceAnswerId)]) {
+      const owners = references.get(answerId) ?? new Set<string>();
+      owners.add("concept-library"); references.set(answerId, owners);
+    }
+  } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   return references;
 }

@@ -17,6 +17,8 @@
     "src/renderer/**/*.tsx",
     "src/shared/types.ts",
     "src/shared/ai-providers.ts",
+    "src/shared/concepts.ts",
+    "src/shared/concept-selection.ts",
     "src/shared/content.ts",
     "src/shared/title-extraction.ts",
     "src/shared/layout.ts",

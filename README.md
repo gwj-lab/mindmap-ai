@@ -57,6 +57,14 @@ The installer is written to `release/`.
 
 The interface is currently in Chinese, so the labels above describe the corresponding features rather than exact on-screen text.
 
+## Concept notes
+
+Select a term with the left mouse button in a saved answer's preview or an assistant answer on ChatGPT, 腾讯元宝, or 豆包. A rounded marker stays over the original text. Click the marker again to generate a concept; click elsewhere to cancel.
+
+The **概念节点** section in the candidate tray stores concept notes across the workspace. Its **设置** button selects the generation website, prompt template, and background mode. Prompts include the complete source sentence and current node title. Ready notes can be read, edited, renamed, dragged into a mind map with a **概念** tag, or moved to and restored from the trash. Click a concept marker to read its note; the source panel returns to the quoted sentence.
+
+Notes use ordinary relative Markdown links compatible with Obsidian. No API key is required for concept generation; sign in to the selected website first. See [概念节点使用说明](docs/concept-nodes.md) for settings, storage, and website automation limits.
+
 ## Optional AI topic generation
 
 ### Answer format preservation

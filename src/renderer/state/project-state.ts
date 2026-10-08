@@ -153,6 +153,7 @@ export function attachPortableCandidate(
     uid: nodeUid,
     text: candidate.title,
     answerId: candidate.answerId,
+    ...(candidate.conceptId ? { conceptId: candidate.conceptId, tags: ["概念"] } : {}),
     children: (candidate.children ?? []).map((item) => ({
       uid: crypto.randomUUID(),
       text: item.title,

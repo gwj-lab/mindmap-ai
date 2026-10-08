@@ -50,6 +50,17 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): () => vo
 }
 
 const api: DesktopApi = {
+  concepts: {
+    get: () => ipcRenderer.invoke("concepts:get"),
+    settings: (settings) => ipcRenderer.invoke("concepts:settings", settings),
+    prepare: (request) => ipcRenderer.invoke("concepts:prepare", request),
+    retry: (id) => ipcRenderer.invoke("concepts:retry", id),
+    run: (id) => ipcRenderer.invoke("concepts:run", id),
+    update: (id, action, title) => ipcRenderer.invoke("concepts:update", { id, action, title }),
+    onRequest: (listener) => subscribe("concepts:request", listener),
+    onChanged: (listener) => subscribe("concepts:changed", listener),
+    onOpen: (listener) => subscribe("concepts:open", listener)
+  },
   settings: {
     getPublicSettings: () => ipcRenderer.invoke(IPC.settingsGetPublic),
     updatePublicSettings: (update, confirmBaseUrlChange) => ipcRenderer.invoke(

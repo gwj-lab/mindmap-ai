@@ -10,6 +10,7 @@ interface MarkdownPreviewProps {
   body: string;
   className?: string;
   provider?: ProviderId;
+  onOpenNote?(answerId: string): void;
 }
 
 const REMARK_PLUGINS = [remarkGfm, remarkMath];
@@ -125,16 +126,18 @@ function normalizeDisplayMath(markdown: string): string {
 export const MarkdownPreview = memo(function MarkdownPreview({
   body,
   className = "markdown-preview",
-  provider = "chatgpt"
+  provider = "chatgpt",
+  onOpenNote
 }: MarkdownPreviewProps): React.JSX.Element {
   const normalizedBody = useMemo(() => normalizeDisplayMath(body), [body]);
+  const localId = (href: string): string | null => href.match(/^([A-Za-z0-9][A-Za-z0-9_-]{0,127})\.md$/)?.[1] ?? null;
   return (
     <article className={className} data-provider={provider}>
       <ReactMarkdown
         remarkPlugins={provider === "chatgpt" ? REMARK_PLUGINS : PLATFORM_REMARK_PLUGINS}
         rehypePlugins={REHYPE_PLUGINS}
-        urlTransform={safeLink}
-        components={components}
+        urlTransform={(url) => onOpenNote && localId(url) ? url : safeLink(url)}
+        components={onOpenNote ? { ...components, a: ({ href, children, title }) => localId(href ?? "") ? <a className="concept-doc-link" href={href} onClick={(event) => { event.preventDefault(); onOpenNote(localId(href!)!); }}>{children}</a> : <components.a href={href} title={title}>{children}</components.a> } : components}
       >
         {normalizedBody}
       </ReactMarkdown>

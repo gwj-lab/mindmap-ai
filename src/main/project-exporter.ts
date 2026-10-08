@@ -32,6 +32,12 @@ export async function exportStandaloneProject(
   }));
 
   const answerIds = await readProjectAnswerIds(source);
+  // Include the transitive Markdown links, so concept/source backlinks remain portable.
+  for (const answerId of answerIds) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(answerId)) throw new Error("Invalid answer id");
+    const markdown = await readFile(path.join(root, "answers", `${answerId}.md`), "utf8");
+    for (const match of markdown.matchAll(/\]\(([A-Za-z0-9][A-Za-z0-9_-]{0,127})\.md\)/g)) answerIds.add(match[1]!);
+  }
   const destinationAnswers = path.join(destination, "answers");
   await mkdir(destinationAnswers, { recursive: true });
   await Promise.all([...answerIds].map(async (answerId) => {

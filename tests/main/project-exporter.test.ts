@@ -29,6 +29,9 @@ describe("standalone project export", () => {
     const opened = await store.initialize("Export", "Portable");
     await store.answers.write(answer("used"));
     await store.answers.write(answer("unused"));
+    await store.answers.write({ ...answer("used"), body: "[概念](concept-example.md)" });
+    await store.answers.write({ ...answer("concept-example"), body: "[来源](source-example.md)" });
+    await store.answers.write({ ...answer("source-example"), body: "[概念](concept-example.md)" });
     const project = structuredClone(opened.project);
     project.mindmap.children.push({ uid: "linked", text: "Used", answerId: "used", children: [] });
     await store.saveActive(project);
@@ -39,6 +42,8 @@ describe("standalone project export", () => {
     expect(map).toContain("(answers/used.md)");
     expect(map).not.toContain("../../answers/");
     await expect(access(path.join(destination, "answers", "used.md"))).resolves.toBeUndefined();
+    await expect(access(path.join(destination, "answers", "concept-example.md"))).resolves.toBeUndefined();
+    await expect(access(path.join(destination, "answers", "source-example.md"))).resolves.toBeUndefined();
     await expect(access(path.join(destination, "answers", "unused.md"))).rejects.toThrow();
     expect(await readdir(destination)).not.toContain(".mindmap-ai-recovery");
     expect(await readdir(destination)).not.toContain("settings.json");

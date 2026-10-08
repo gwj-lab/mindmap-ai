@@ -10,6 +10,8 @@ interface PortableProjectDescriptor {
 }
 
 interface NodeMetadata {
+  conceptId?: string;
+  tags?: string[];
   uid: string;
   text: string;
   answerId?: string;
@@ -17,6 +19,8 @@ interface NodeMetadata {
 }
 
 const nodeMetadataSchema = z.object({
+  conceptId: z.string().uuid().optional(),
+  tags: z.array(z.string().max(40)).optional(),
   uid: z.string().min(1).max(128),
   text: z.string().min(1).max(4_000),
   answerId: z.string().regex(localIdPattern).optional(),
@@ -46,6 +50,7 @@ function metadataFor(node: MindMapNodeData): NodeMetadata {
     uid: node.uid,
     text: encodeURIComponent(node.text),
     ...(node.answerId ? { answerId: node.answerId } : {}),
+    ...(typeof node.conceptId === "string" ? { conceptId: node.conceptId, tags: ["概念"] } : {}),
     ...(node.linkedProjectId ? { linkedProjectId: node.linkedProjectId } : {})
   };
 }
@@ -141,6 +146,7 @@ export function parsePortableMap(markdown: string): MindMapNodeData {
       uid: metadata.uid,
       text,
       ...(metadata.answerId ? { answerId: metadata.answerId } : {}),
+      ...(metadata.conceptId ? { conceptId: metadata.conceptId, tags: metadata.tags ?? ["概念"] } : {}),
       ...(metadata.linkedProjectId ? { linkedProjectId: metadata.linkedProjectId } : {}),
       children: []
     };

@@ -13,6 +13,7 @@ export function toMindMapLibraryNode(node: MindMapNodeData): MindMapLibraryNode 
   return {
     data: {
       ...data,
+      ...(node.conceptId ? { tag: ["概念"] } : {}),
       ...(node.linkedProjectId ? { note: PROJECT_INDICATOR_NOTE } : node.answerId ? { note: CONTENT_INDICATOR_NOTE } : {})
     },
     children: children.map(toMindMapLibraryNode)

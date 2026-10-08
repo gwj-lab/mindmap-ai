@@ -84,6 +84,7 @@ export const candidateChildSchema = z.object({
 });
 
 export const candidateNodeV2Schema: z.ZodType<CandidateNode> = z.object({
+  conceptId: z.string().uuid().optional(),
   id: localIdSchema,
   answerId: localIdSchema,
   title: z.string().trim().min(1).max(160),

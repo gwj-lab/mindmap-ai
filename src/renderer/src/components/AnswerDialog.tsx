@@ -5,8 +5,15 @@ import { Edit3, Eye, RefreshCw, Save, X } from "lucide-react";
 import { contentHash, extractTitle } from "../../../shared/content.js";
 import type { AnswerDocument } from "../../../shared/types.js";
 import { MarkdownPreview } from "./MarkdownPreview.js";
+import { ConceptSelectionController } from "../../../shared/concept-selection.js";
+import type { ConceptRecord, ConceptRequest, ConceptSelection } from "../../../shared/concepts.js";
 
 interface AnswerDialogProps {
+  nodeTitle?: string;
+  records?: ConceptRecord[];
+  focusSelection?: ConceptSelection;
+  onGenerateConcept?(request: ConceptRequest): Promise<void>;
+  onOpenNote?(answerId: string, selection?: ConceptSelection): void;
   answerId: string;
   nodeUid: string;
   readOnly?: boolean;
@@ -15,6 +22,8 @@ interface AnswerDialogProps {
 }
 
 export const AnswerDialog = memo(function AnswerDialog(props: AnswerDialogProps): React.JSX.Element {
+  const { onGenerateConcept, onOpenNote, answerId, nodeTitle, records, focusSelection, readOnly } = props;
+  const [focusError, setFocusError] = useState("");
   const [answer, setAnswer] = useState<AnswerDocument | null>(null);
   const [body, setBody] = useState("");
   const [mode, setMode] = useState<"preview" | "edit">("preview");
@@ -25,6 +34,7 @@ export const AnswerDialog = memo(function AnswerDialog(props: AnswerDialogProps)
   const animationFrame = useRef<number | null>(null);
   const editorExtensions = useMemo(() => [markdown()], []);
   const [previewBody, setPreviewBody] = useState("");
+  const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setPreviewBody(body), mode === "preview" ? 0 : 150);
@@ -40,6 +50,27 @@ export const AnswerDialog = memo(function AnswerDialog(props: AnswerDialogProps)
     });
     return () => { active = false; };
   }, [props.answerId]);
+
+  useEffect(() => {
+    if (dirty || !props.records) return;
+    let active = true;
+    void window.mindmapAI.project.readAnswer(props.answerId).then((document) => { if (active && document) { setAnswer(document); setBody(document.body); } });
+    return () => { active = false; };
+  }, [props.answerId, props.records, dirty]);
+
+  useEffect(() => {
+    const root = contentRef.current?.querySelector(".markdown-preview");
+    if (!root || mode !== "preview" || readOnly || !onGenerateConcept || !answer) return;
+    const controller = new ConceptSelectionController(document, (target) => root.contains(target) ? root : null, (_root, selection) => {
+      void (async () => {
+        if (dirty) { await window.mindmapAI.project.writeAnswer({ metadata: { ...answer.metadata, contentHash: await contentHash(body), updatedAt: new Date().toISOString() }, body }); setDirty(false); }
+        await onGenerateConcept({ sourceAnswerId: answerId, sourceTitle: nodeTitle || answer.metadata.title, selection });
+      })().catch((error: unknown) => setFocusError(error instanceof Error ? error.message : "概念生成失败"));
+    }, (id) => onOpenNote?.(id));
+    controller.setMarks((records ?? []).flatMap((record) => record.status === "ready" || record.status === "generating" ? record.references.filter((ref) => ref.sourceAnswerId === answerId).map((ref) => ({ root, mark: { id: record.answerId, selection: ref.selection, pending: record.status === "generating" } })) : []));
+    if (focusSelection && !controller.focus(root, focusSelection)) queueMicrotask(() => setFocusError("来源文字已改变，无法精确定位选词"));
+    return () => controller.destroy();
+  }, [mode, body, answer, answerId, nodeTitle, records, focusSelection, readOnly, onGenerateConcept, onOpenNote, dirty]);
 
   useEffect(() => {
     const move = (event: PointerEvent): void => {
@@ -111,7 +142,7 @@ export const AnswerDialog = memo(function AnswerDialog(props: AnswerDialogProps)
           <button title="关闭" onClick={close}><X size={17} /></button>
         </nav>
       </header>
-      <div className={`answer-content answer-content--${mode}`}>
+      <div ref={contentRef} className={`answer-content answer-content--${mode}`}>
         {mode === "edit" && (
           <div className="answer-editor">
             <CodeMirror
@@ -123,11 +154,12 @@ export const AnswerDialog = memo(function AnswerDialog(props: AnswerDialogProps)
             />
           </div>
         )}
-        <MarkdownPreview body={mode === "preview" ? body : previewBody} provider={answer?.metadata.provider} />
+        <MarkdownPreview body={mode === "preview" ? body : previewBody} provider={answer?.metadata.provider} onOpenNote={props.onOpenNote} />
       </div>
+      {answer?.metadata.conceptId && <div className="concept-backlinks"><strong>概念 · 来源与反向链接</strong>{props.records?.find((record) => record.id === answer.metadata.conceptId)?.references.map((ref, index) => <button key={`${ref.sourceAnswerId}-${index}`} onClick={() => props.onOpenNote?.(ref.sourceAnswerId, ref.selection)} title={ref.selection.sentence}>{ref.sourceTitle} · {ref.selection.sentence}</button>)}</div>}
       <footer>
         <span>{answer?.metadata.provider ?? "chatgpt"}</span>
-        <span>{dirty ? "未保存修改" : "内容已保存"}</span>
+        <span>{focusError || (dirty ? "未保存修改" : "内容已保存")}</span>
       </footer>
     </aside>
   );

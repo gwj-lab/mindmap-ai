@@ -60,6 +60,7 @@ function workspace(activeProjectId = PROJECT_ID): WorkspaceManifest {
 
 function api(overrides: Partial<DesktopApi["project"]> = {}): DesktopApi {
   return {
+    concepts: { get: vi.fn(), settings: vi.fn(), prepare: vi.fn(), retry: vi.fn(), run: vi.fn(), update: vi.fn(), onRequest: vi.fn(() => () => undefined), onChanged: vi.fn(() => () => undefined), onOpen: vi.fn(() => () => undefined) },
     settings: {
       getPublicSettings: vi.fn(), updatePublicSettings: vi.fn(), testConnection: vi.fn(), setApiKey: vi.fn(), clearApiKey: vi.fn()
     },

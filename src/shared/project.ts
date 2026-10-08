@@ -13,6 +13,8 @@ export const projectManifestSchema = z.object({
 });
 
 export const answerMetadataSchema = z.object({
+  conceptId: z.string().uuid().optional(),
+  tags: z.array(z.string().max(40)).max(10).optional(),
   id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/),
   provider: z.enum(["chatgpt", "yuanbao", "doubao"]),
   title: z.string().trim().min(1).max(160),
