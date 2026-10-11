@@ -2,7 +2,7 @@ import TurndownService from "turndown";
 import { gfm } from "turndown-plugin-gfm";
 import { safeLink } from "../shared/content.js";
 
-// Only Doubao and Yuanbao use these rules. ChatGPT's converter stays unchanged.
+// Shared semantic Markdown rules; legacy ChatGPT answers retain their converter.
 export function replaceMath(element: Element, tex: string, display: boolean): void {
   const marker = element.ownerDocument.createElement(display ? "div" : "span");
   marker.setAttribute("data-answer-math", display ? "block" : "inline");
@@ -80,8 +80,44 @@ function normalizeTasks(root: Element): void {
 }
 
 export function serializeAnswer(root: Element, sourceUrl: string): string {
+  // Restore snapshots after Turndown's whitespace normalization. A formula
+  // inside a paragraph otherwise collapses the JSON fence into ordinary text.
+  const snapshots: string[] = [];
+  root.querySelectorAll('[data-answer-snapshot]').forEach((element) => {
+    snapshots.push(element.textContent ?? '');
+    element.textContent = `MINDMAPSNAPSHOT${snapshots.length - 1}PLACEHOLDER`;
+  });
   normalizeMath(root);
   normalizeTasks(root);
+  const footnotes = new Set<string>();
+  root.querySelectorAll('p, div').forEach((paragraph) => {
+    if (paragraph.closest('pre,code') || paragraph.tagName === 'DIV' && paragraph.querySelector('p,div')) return;
+    const match = paragraph.textContent?.match(/^\[\^([\w-]+)\]:\s*/);
+    if (!match) return;
+    footnotes.add(match[1]); paragraph.setAttribute('data-answer-footnote', match[1]);
+    const walker = root.ownerDocument.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+    let remaining = match[0].length;
+    while (remaining && walker.nextNode()) {
+      const node = walker.currentNode as Text;
+      const consumed = Math.min(remaining, node.length);
+      node.textContent = node.textContent!.slice(consumed); remaining -= consumed;
+    }
+  });
+  if (footnotes.size) {
+    const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes: Text[] = []; while (walker.nextNode()) nodes.push(walker.currentNode as Text);
+    for (const node of nodes) {
+      if (node.parentElement?.closest('pre,code,[data-answer-footnote]')) continue;
+      const value = node.textContent ?? ''; const fragment = root.ownerDocument.createDocumentFragment(); let offset = 0;
+      for (const match of value.matchAll(/\[\^([\w-]+)\]/g)) {
+        if (!footnotes.has(match[1])) continue;
+        fragment.append(value.slice(offset, match.index));
+        const marker = root.ownerDocument.createElement('span'); marker.setAttribute('data-answer-literal', 'true'); marker.textContent = match[0]; fragment.append(marker);
+        offset = match.index + match[0].length;
+      }
+      if (offset) { fragment.append(value.slice(offset)); node.replaceWith(fragment); }
+    }
+  }
   root.querySelectorAll('a[data-footnote-ref], a[role="doc-noteref"]').forEach((link) => {
     const id = link.getAttribute("href")?.match(/^#(?:user-content-)?fn-?(.+)$/)?.[1];
     if (!id || !/^[\w-]+$/.test(id)) return;
@@ -126,6 +162,10 @@ export function serializeAnswer(root: Element, sourceUrl: string): string {
   turndown.addRule("literal", {
     filter: (node) => node.hasAttribute("data-answer-literal"),
     replacement: (_content, node) => node.textContent ?? ""
+  });
+  turndown.addRule('snapshot', {
+    filter: (node) => node.hasAttribute('data-answer-snapshot'),
+    replacement: (_content, node) => `\n\n${node.textContent}\n\n`
   });
   turndown.addRule("footnote", {
     filter: (node) => node.hasAttribute("data-answer-footnote"),
@@ -176,5 +216,5 @@ export function serializeAnswer(root: Element, sourceUrl: string): string {
       return `\n\n${header}${content.trim()}\n\n`;
     }
   });
-  return turndown.turndown(root.innerHTML).trim();
+  return turndown.turndown(root.innerHTML).replace(/MINDMAPSNAPSHOT(\d+)PLACEHOLDER/g, (_match, index: string) => `\n\n${snapshots[Number(index)]}\n\n`).trim();
 }

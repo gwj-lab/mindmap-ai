@@ -1,15 +1,15 @@
 ---
-conceptId: a6819412-80d7-4485-afec-6a8151181cbb
+conceptId: 8f18c589-f5b2-454b-80b2-68c5afcaf890
 tags:
   - 概念
-id: concept-a6819412-80d7-4485-afec-6a8151181cbb
+id: concept-8f18c589-f5b2-454b-80b2-68c5afcaf890
 provider: yuanbao
 title: 残差
 sourceUrl: https://yuanbao.tencent.com/
 sourceMessageId: generated
-contentHash: e422378bec5d3e8ab85695ff9da6c802c6b0261b3c2597c2e4a9856a6795cbcf
-capturedAt: 2026-10-08T15:46:49.304Z
-updatedAt: 2026-10-08T15:46:54.075Z
+contentHash: 68c5282a7ae07977aa59ede596ccf08209c6de1d43a5439cb997ace8dac79cc6
+capturedAt: 2026-10-11T15:24:42.405Z
+updatedAt: 2026-10-11T15:24:47.179Z
 ---
 # 残差
 
@@ -17,6 +17,6 @@ updatedAt: 2026-10-08T15:46:54.075Z
 
 ## 概念来源
 
-- [回归模型](2beeafbe-92e4-4694-b805-8489a1c6c568.md)
+- [回归模型](1f295c3d-88d4-42d2-93c3-d52c2964736e.md)
 
   > 残差是观测值与预测值之差。

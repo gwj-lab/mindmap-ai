@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Focus, Minus, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
+import { Focus, Merge, Minus, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
+import { nodesForMerge } from '../../state/node-merge.js';
+import { MergeNodesDialog } from './MergeNodesDialog.js';
 import MindMap from "simple-mind-map";
 import Drag from "simple-mind-map/src/plugins/Drag.js";
 import KeyboardNavigation from "simple-mind-map/src/plugins/KeyboardNavigation.js";
@@ -64,11 +66,13 @@ function installFlushableSelectionCheck(mindMap: MindMap): SelectionPluginInstan
 }
 
 export interface MindMapController {
+  focusNode(uid: string): void;
   command(name: string): void;
   applyTheme(name: "paper" | "night" | "ink"): void;
 }
 
 interface MindMapPanelProps {
+  onCreateAttachment?(nodeUid: string, kind: 'blank' | 'import'): void;
   projectId: string;
   data: MindMapNodeData;
   readOnly?: boolean;
@@ -84,6 +88,7 @@ interface MindMapPanelProps {
   onCreateSibling(nodeUid: string): void;
   onMoveToHistory(nodeUid: string): void;
   onDeleteNodes(nodeUids: string[]): void;
+  onMergeNodes?(nodeUids: string[], targetUid: string, title: string, answerId?: string): void;
   onController(controller: MindMapController | null): void;
 }
 
@@ -163,6 +168,14 @@ export function MindMapPanel(props: MindMapPanelProps): React.JSX.Element {
   const dragHitRef = useRef<{ x: number; y: number; node: RenderedNode | null } | null>(null);
   const dragFrameRef = useRef<number | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [selectedUids, setSelectedUids] = useState<string[]>([]);
+  const [mergeNodes, setMergeNodes] = useState<MindMapNodeData[] | null>(null);
+  const [mergeError, setMergeError] = useState('');
+  const openMerge = (): void => {
+    if (props.readOnly) return;
+    try { setMergeNodes(nodesForMerge(props.data, selectedUids)); setMergeError(''); }
+    catch (cause) { setMergeError(cause instanceof Error ? cause.message : '无法合并所选节点'); }
+  };
 
   useEffect(() => {
     handlersRef.current = props;
@@ -209,6 +222,7 @@ export function MindMapPanel(props: MindMapPanelProps): React.JSX.Element {
     });
     mindMap.on("node_active", (rawNode, rawList) => {
       const list = Array.isArray(rawList) ? rawList as RenderedNode[] : [];
+      setSelectedUids(list.map((node) => node.uid));
       selectedNodeRef.current = rawNode as RenderedNode | null ?? list.at(-1) ?? null;
       const selectedNode = selectedNodeRef.current;
       if (selectedNode && selectedNode.uid !== mindMap.renderer.root?.uid) {
@@ -302,6 +316,7 @@ export function MindMapPanel(props: MindMapPanelProps): React.JSX.Element {
     });
 
     const controller: MindMapController = {
+      focusNode: (uid) => mindMap.renderer.goTargetNode(uid),
       command: (name) => {
         if (name === "ZOOM_IN") mindMap.view.enlarge();
         else if (name === "ZOOM_OUT") mindMap.view.narrow();
@@ -390,14 +405,25 @@ export function MindMapPanel(props: MindMapPanelProps): React.JSX.Element {
         <span />
         <button title="新建子节点 Tab" onClick={() => command("INSERT_CHILD_NODE")}><Plus size={16} /></button>
         <button title="删除节点" onClick={() => command("REMOVE_NODE")}><Trash2 size={16} /></button>
+        <button title="合并选中节点" aria-label="合并选中节点" disabled={props.readOnly || selectedUids.length < 2 || !props.onMergeNodes} onClick={openMerge}><Merge size={16} /></button>
         <span />
         <button title="缩小" onClick={() => command("ZOOM_OUT")}><Minus size={16} /></button>
         <button title="放大" onClick={() => command("ZOOM_IN")}><Plus size={16} /></button>
         <button title="适应画布" onClick={() => command("FIT")}><Focus size={16} /></button>
       </div>
+      {mergeError && <div className="map-merge-error" role="alert">{mergeError}<button onClick={() => setMergeError('')}>×</button></div>}
       <div
         ref={hostRef}
         className="mindmap-canvas"
+        onContextMenuCapture={(event) => {
+          if (props.readOnly || selectedUids.length < 2) return;
+          const element = (event.target as Element).closest('.smm-node');
+          const node = element ? renderedNodeByElement.current.get(element as SVGGraphicsElement) : undefined;
+          if (!node || !selectedUids.includes(node.uid)) return;
+          // The library normally clears multi-selection before opening a menu.
+          event.preventDefault(); event.stopPropagation();
+          mapRef.current?.emit('node_contextmenu', event.nativeEvent, node);
+        }}
         onDragOver={(event) => {
           const isCandidate = event.dataTransfer.types.includes("application/x-mindmap-candidate");
           const isHistory = event.dataTransfer.types.includes("application/x-mindmap-history");
@@ -449,10 +475,17 @@ export function MindMapPanel(props: MindMapPanelProps): React.JSX.Element {
           onMoveToHistory={props.onMoveToHistory}
           onDelete={(nodeUid) => props.onDeleteNodes([nodeUid])}
           onOpenAnswer={props.onOpenAnswer}
+          onCreateAttachment={props.readOnly ? undefined : props.onCreateAttachment}
           onLinkProject={props.readOnly ? undefined : props.onLinkProject}
           onUnlinkProject={props.readOnly ? undefined : props.onUnlinkProject}
+          onMerge={props.readOnly || !props.onMergeNodes ? undefined : openMerge}
+          canMerge={selectedUids.length >= 2}
         />
       )}
+      {mergeNodes && <MergeNodesDialog nodes={mergeNodes} onClose={() => setMergeNodes(null)} onMerge={(targetUid, title, answerId) => {
+        props.onMergeNodes?.(mergeNodes.map((node) => node.uid), targetUid, title, answerId);
+        setMergeNodes(null); setSelectedUids([]);
+      }} />}
     </section>
   );
 }

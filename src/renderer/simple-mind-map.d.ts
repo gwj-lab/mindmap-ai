@@ -20,6 +20,7 @@ declare module "simple-mind-map" {
     renderer: {
       root: LibraryNode | null;
       activeNodeList: LibraryNode[];
+      goTargetNode(uid: string): void;
       textEdit?: { hideEditTextBox(): void };
     };
     keyCommand: {
@@ -28,6 +29,7 @@ declare module "simple-mind-map" {
     };
     view: { enlarge(): void; narrow(): void; fit(): void; reset(): void };
     on(event: string, listener: (...args: unknown[]) => void): void;
+    emit(event: string, ...args: unknown[]): void;
     off(event: string, listener: (...args: unknown[]) => void): void;
     execCommand(command: string, ...args: unknown[]): void;
     setData(data: LibraryData): void;

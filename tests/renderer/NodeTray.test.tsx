@@ -6,6 +6,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { NodeTray } from "../../src/renderer/src/components/NodeTray.js";
 import type { CandidateNode, HistoryEntry, ProjectTrashEntry } from "../../src/shared/types.js";
+import type { ConceptRecord } from "../../src/shared/concepts.js";
 
 const candidate: CandidateNode = {
   id: "candidate-1",
@@ -43,6 +44,19 @@ function callbacks() {
 afterEach(() => document.body.replaceChildren());
 
 describe("NodeTray", () => {
+  test("groups concepts by every referenced project and candidates by their current project", () => {
+    const concept: ConceptRecord = { id: 'concept', answerId: 'concept-note', title: '概念内容', status: 'ready', provider: 'chatgpt', prompt: '', tabId: 'tab', createdAt: candidate.createdAt, references: ['p1', 'p2', 'p2'].map((projectId) => ({ projectId, sourceAnswerId: 'source', sourceTitle: '来源', sourceUrl: 'https://chatgpt.com/c/source', sourceMessageId: 'source', selection: { text: '概念内容', sentence: '概念内容解释。', prefix: '', suffix: '解释。' } })) };
+    const projects = ['项目一', '项目二'].map((name, index) => ({ projectId: `p${index + 1}`, name, parentProjectId: null, order: index, createdAt: candidate.createdAt, updatedAt: candidate.createdAt }));
+    const { container } = render(<NodeTray currentProject={{ projectId: 'p1', name: '项目一' }} projects={projects} concepts={[concept]} onConceptSettings={vi.fn()} candidates={[candidate]} history={[]} trash={[]} {...callbacks()} />);
+    const candidateProject = container.querySelector('.node-tray-panel > .tray-category > .tray-project')!;
+    expect(candidateProject.querySelector('summary')).toHaveTextContent('项目一 1');
+    expect(candidateProject).toHaveTextContent('Main title');
+    const groups = container.querySelectorAll('.concept-library .tray-project');
+    expect(groups).toHaveLength(2);
+    expect(groups[0]!.querySelector('summary')).toHaveTextContent('项目一 1当前');
+    expect(groups[1]!.querySelector('summary')).toHaveTextContent('项目二 1');
+    expect(container.querySelectorAll('details.tray-category')).toHaveLength(2);
+  });
   test("shows tab counts and edits expanded candidate children", () => {
     const actions = callbacks();
     render(<NodeTray candidates={[candidate]} history={[history]} trash={[trash]} {...actions} />);

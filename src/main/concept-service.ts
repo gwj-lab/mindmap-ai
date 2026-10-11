@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import writeFileAtomic from "write-file-atomic";
-import { conceptLibrarySchema, conceptPrompt, DEFAULT_CONCEPT_SETTINGS, type ConceptJob, type ConceptLibrary, type ConceptRecord, type ConceptReference, type ConceptRequest, type ConceptSettings } from "../shared/concepts.js";
+import { conceptLibrarySchema, conceptPrompt, DEFAULT_CONCEPT_SETTINGS, DEFAULT_QUESTION_SETTINGS, type ConceptJob, type ConceptLibrary, type ConceptRecord, type ConceptReference, type ConceptRequest, type ConceptSettings, type QuestionRequest, type QuestionSettings } from "../shared/concepts.js";
 import type { AnswerDocument, CapturedAnswerPayload, SaveResult } from "../shared/types.js";
 import { AnswerRepository } from "./answer-repository.js";
 
@@ -33,13 +33,14 @@ export class ConceptService {
     this.#tail = result.catch(() => undefined); return result;
   }
   settings(settings: ConceptSettings): Promise<ConceptLibrary> { return this.#write(async (library) => { library.settings = settings; return structuredClone(library); }); }
+  questionSettings(settings: QuestionSettings): Promise<ConceptLibrary> { return this.#write(async (library) => { library.questionSettings = settings; return structuredClone(library); }); }
   writeEdited(answer: AnswerDocument, write: (answer: AnswerDocument) => Promise<SaveResult>): Promise<SaveResult> {
     return this.#write(async (library) => {
       const next = structuredClone(answer);
       for (const record of library.records) {
         if (record.status !== "ready" && !(record.status === "trash" && record.previousStatus === "ready")) continue;
         if (record.references.some((ref) => ref.sourceAnswerId === next.metadata.id) && !next.body.includes(`](${record.answerId}.md)`)) {
-          next.body += `\n\n${next.body.includes("\n## 概念引用\n") ? "" : "## 概念引用\n\n"}- [${label(record.title)}](${record.answerId}.md)`;
+          next.body += this.#sourceLink(record, next.body);
         }
         if (record.answerId === next.metadata.id) for (const ref of record.references) if (!next.body.includes(`](${ref.sourceAnswerId}.md)`)) {
           next.body += `\n\n- [${label(ref.sourceTitle)}](${ref.sourceAnswerId}.md)\n\n  > ${ref.selection.sentence.replace(/\n/g, "\n  > ")}`;
@@ -50,25 +51,28 @@ export class ConceptService {
     });
   }
   async saveSource(payload: CapturedAnswerPayload): Promise<AnswerDocument> {
-    const existing = (await this.answers.listDocuments()).find((answer) => !answer.metadata.conceptId && answer.metadata.provider === payload.provider && answer.metadata.sourceMessageId === payload.sourceMessageId && answer.metadata.sourceUrl === payload.sourceUrl && (answer.body === payload.markdown || answer.body.startsWith(`${payload.markdown}\n\n## 概念引用\n`)));
+    const existing = (await this.answers.listDocuments()).find((answer) => !answer.metadata.conceptId && !answer.metadata.annotationId && answer.metadata.provider === payload.provider && answer.metadata.sourceMessageId === payload.sourceMessageId && answer.metadata.sourceUrl === payload.sourceUrl && (answer.body === payload.markdown || answer.body.startsWith(`${payload.markdown}\n\n## 概念引用\n`) || answer.body.startsWith(`${payload.markdown}\n\n## 答疑批注\n`)));
     if (existing) return existing;
     const now = new Date().toISOString();
     const answer: AnswerDocument = { metadata: { id: `source-${randomUUID()}`, provider: payload.provider, title: payload.markdown.match(/^#+\s+(.+)$/m)?.[1]?.slice(0, 160) || "概念来源回答", sourceUrl: payload.sourceUrl, sourceMessageId: payload.sourceMessageId, contentHash: hash(payload.markdown), capturedAt: now, updatedAt: now }, body: payload.markdown };
     await this.answers.write(answer); return answer;
   }
-  prepare(request: ConceptRequest, projectId: string): Promise<ConceptJob> {
+  prepareQuestion(request: QuestionRequest, projectId: string): Promise<ConceptJob> { return this.prepare(request, projectId, request.question); }
+  prepare(request: ConceptRequest, projectId: string, question?: string): Promise<ConceptJob> {
     return this.#write(async (library) => {
       const source = await this.answers.read(request.sourceAnswerId);
       if (!source) throw new Error("来源笔记不存在");
-      const reference: ConceptReference = { ...request, projectId, sourceUrl: source.metadata.sourceUrl, sourceMessageId: source.metadata.sourceMessageId };
-      const prior = library.records.find((record) => record.status !== "trash" && record.references[0]!.selection.text === request.selection.text && record.references[0]!.selection.sentence === request.selection.sentence && record.references[0]!.sourceTitle === request.sourceTitle);
+      const settings = question ? library.questionSettings ?? DEFAULT_QUESTION_SETTINGS : library.settings;
+      const provider = settings.provider === "current" ? source.metadata.provider : settings.provider;
+      const reference: ConceptReference = { sourceAnswerId: request.sourceAnswerId, sourceTitle: request.sourceTitle, selection: request.selection, projectId, sourceUrl: source.metadata.sourceUrl, sourceMessageId: source.metadata.sourceMessageId };
+      const prior = library.records.find((record) => record.status !== "trash" && (question ? record.kind === "qa" && record.provider === provider && record.prompt === question && record.references[0]!.sourceAnswerId === request.sourceAnswerId && JSON.stringify(record.references[0]!.selection) === JSON.stringify(request.selection) : !record.kind) && record.references[0]!.selection.text === request.selection.text && record.references[0]!.selection.sentence === request.selection.sentence && record.references[0]!.sourceTitle === request.sourceTitle);
       if (prior) {
-        if (!prior.references.some((ref) => ref.sourceAnswerId === reference.sourceAnswerId && JSON.stringify(ref.selection) === JSON.stringify(reference.selection))) prior.references.push(reference);
+        if (!prior.references.some((ref) => ref.projectId === projectId && ref.sourceAnswerId === reference.sourceAnswerId && JSON.stringify(ref.selection) === JSON.stringify(reference.selection))) prior.references.push(reference);
         if (prior.status === "ready") await this.#link(prior, source);
         return { record: structuredClone(prior), background: library.settings.background, reused: true };
       }
       const id = randomUUID();
-      const record: ConceptRecord = { id, answerId: `concept-${id}`, title: request.selection.text, provider: library.settings.provider === "current" ? source.metadata.provider : library.settings.provider, references: [reference], status: "generating", prompt: conceptPrompt(library.settings, request), tabId: `concept-tab-${id}`, createdAt: new Date().toISOString() };
+      const record: ConceptRecord = { id, answerId: `${question ? "qa" : "concept"}-${id}`, ...(question ? { kind: "qa" as const } : {}), title: request.selection.text.slice(0, 160), provider, references: [reference], status: "generating", prompt: question ?? conceptPrompt(library.settings, request), tabId: `concept-tab-${id}`, createdAt: new Date().toISOString() };
       library.records.push(record);
       return { record: structuredClone(record), background: library.settings.background, reused: false };
     });
@@ -78,8 +82,8 @@ export class ConceptService {
       const record = library.records.find((record) => record.id === id);
       if (!record || record.status !== "failed") throw new Error("此概念不能重试");
       record.status = "generating"; delete record.error; record.tabId = `concept-tab-${randomUUID()}`;
-      record.provider = library.settings.provider === "current" ? (await this.answers.read(record.references[0]!.sourceAnswerId))!.metadata.provider : library.settings.provider;
-      record.prompt = conceptPrompt(library.settings, record.references[0]!);
+      if (record.kind !== "qa") record.provider = library.settings.provider === "current" ? (await this.answers.read(record.references[0]!.sourceAnswerId))!.metadata.provider : library.settings.provider;
+      if (record.kind !== "qa") record.prompt = conceptPrompt(library.settings, record.references[0]!);
       return { record: structuredClone(record), background: library.settings.background, reused: false };
     });
   }
@@ -90,16 +94,19 @@ export class ConceptService {
       if (record?.status !== "generating") return;
       if (record.provider !== payload.provider) throw new Error("概念回答平台不匹配");
       const now = new Date().toISOString();
-      const body = `${payload.markdown}\n\n## 概念来源\n\n${record.references.map((ref) => `- [${label(ref.sourceTitle)}](${ref.sourceAnswerId}.md)\n\n  > ${ref.selection.sentence.replace(/\n/g, "\n  > ")}`).join("\n\n")}`;
-      await this.answers.write({ metadata: { id: record.answerId, provider: payload.provider, title: record.title, conceptId: record.id, tags: ["概念"], sourceUrl: payload.sourceUrl, sourceMessageId: payload.sourceMessageId, contentHash: hash(body), capturedAt: record.createdAt, updatedAt: now }, body });
+      const body = `${payload.markdown}${record.kind === "qa" ? `\n\n## 提问\n\n${record.prompt.split("\n").map((line) => `> ${line}`).join("\n")}` : ""}\n\n## ${record.kind === "qa" ? "批注来源" : "概念来源"}\n\n${record.references.map((ref) => `- [${label(ref.sourceTitle)}](${ref.sourceAnswerId}.md)\n\n  > ${ref.selection.sentence.replace(/\n/g, "\n  > ")}`).join("\n\n")}`;
+      await this.answers.write({ metadata: { id: record.answerId, provider: payload.provider, title: record.title, ...(record.kind === "qa" ? { annotationId: record.id, tags: ["答疑"] } : { conceptId: record.id, tags: ["概念"] }), sourceUrl: payload.sourceUrl, sourceMessageId: payload.sourceMessageId, contentHash: hash(body), capturedAt: record.createdAt, updatedAt: now }, body });
       for (const reference of record.references) { const source = await this.answers.read(reference.sourceAnswerId); if (source) await this.#link(record, source); }
       record.status = "ready"; delete record.error;
     });
   }
+  #sourceLink(record: ConceptRecord, body: string): string {
+    const heading = record.kind === "qa" ? "答疑批注" : "概念引用";
+    return `\n\n${body.includes(`\n## ${heading}\n`) ? "" : `## ${heading}\n\n`}- [${label(record.title)}](${record.answerId}.md)`;
+  }
   async #link(record: ConceptRecord, source: AnswerDocument): Promise<void> {
-    const link = `[${label(record.title)}](${record.answerId}.md)`;
     if (!source.body.includes(`](${record.answerId}.md)`)) {
-      source.body += `\n\n${source.body.includes("\n## 概念引用\n") ? "" : "## 概念引用\n\n"}- ${link}`;
+      source.body += this.#sourceLink(record, source.body);
       source.metadata.contentHash = hash(source.body); source.metadata.updatedAt = new Date().toISOString(); await this.answers.write(source);
     }
     const concept = await this.answers.read(record.answerId);

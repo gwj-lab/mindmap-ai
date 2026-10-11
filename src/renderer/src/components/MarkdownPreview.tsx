@@ -5,6 +5,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { safeLink } from "../../../shared/content.js";
 import type { ProviderId } from "../../../shared/types.js";
+import { RichAnswerSnapshot } from './RichAnswerSnapshot.js';
 
 interface MarkdownPreviewProps {
   body: string;
@@ -32,13 +33,16 @@ const PLATFORM_REMARK_PLUGINS = [...REMARK_PLUGINS, tableCellBreaks];
 const REHYPE_PLUGINS = [[rehypeKatex, { trust: false, maxExpand: 1000, maxSize: 20 }]] as NonNullable<Options["rehypePlugins"]>;
 
 const components = {
-  a: ({ title, children, href }: { title?: string; children?: React.ReactNode; href?: string }) => <a href={href} title={title === "chatgpt-source" ? undefined : title} className={title === "chatgpt-source" ? "markdown-citation" : undefined}>{children}</a>,
+  a: ({ title, children, href, id, 'data-footnote-ref': footnoteRef, 'data-footnote-backref': footnoteBackref }: { title?: string; children?: React.ReactNode; href?: string; id?: string; 'data-footnote-ref'?: boolean | string; 'data-footnote-backref'?: boolean | string }) => <a href={href} id={id} data-footnote-ref={footnoteRef} data-footnote-backref={footnoteBackref} title={title === "chatgpt-source" ? undefined : title} className={title === "chatgpt-source" ? "markdown-citation" : undefined}>{children}</a>,
   table: ({ children }: { children?: React.ReactNode }) => <div className="markdown-table-wrap"><table>{children}</table></div>,
   pre: ({ children }: { children?: React.ReactNode }) => {
     const code = Array.isArray(children) ? children[0] : children;
     const language = code && typeof code === "object" && "props" in code
       ? (code.props as { className?: string }).className?.match(/language-([\w+-]+)/)?.[1] : undefined;
     const label = language && ({ javascript: "JavaScript", python: "Python", text: "纯文本" } as Record<string, string>)[language];
+    if (language === 'mindmap-ui' && code && typeof code === 'object' && 'props' in code) {
+      return <RichAnswerSnapshot value={String((code.props as { children?: React.ReactNode }).children ?? '')} />;
+    }
     return <div className="markdown-code-block">{language && <div className="markdown-code-language">{label ?? language}</div>}<pre>{children}</pre></div>;
   }
 };
@@ -65,7 +69,7 @@ function normalizeMathText(text: string): string {
     }
     if (text[index] === "\\") {
       const opening = text[index + 1];
-      if (opening === "(" || opening === "[") {
+      if (opening === "(" || (opening === "[" && text[index + 2] !== '^')) {
         const closing = opening === "(" ? "\\)" : "\\]";
         const end = text.indexOf(closing, index + 2);
         if (end !== -1) {
@@ -134,10 +138,10 @@ export const MarkdownPreview = memo(function MarkdownPreview({
   return (
     <article className={className} data-provider={provider}>
       <ReactMarkdown
-        remarkPlugins={provider === "chatgpt" ? REMARK_PLUGINS : PLATFORM_REMARK_PLUGINS}
+        remarkPlugins={PLATFORM_REMARK_PLUGINS}
         rehypePlugins={REHYPE_PLUGINS}
-        urlTransform={(url) => onOpenNote && localId(url) ? url : safeLink(url)}
-        components={onOpenNote ? { ...components, a: ({ href, children, title }) => localId(href ?? "") ? <a className="concept-doc-link" href={href} onClick={(event) => { event.preventDefault(); onOpenNote(localId(href!)!); }}>{children}</a> : <components.a href={href} title={title}>{children}</components.a> } : components}
+        urlTransform={(url) => /^#user-content-fn(?:ref)?-[\w%-]+$/.test(url) || onOpenNote && localId(url) ? url : safeLink(url)}
+        components={onOpenNote ? { ...components, a: (props) => localId(props.href ?? "") ? <a className="concept-doc-link" href={props.href} onClick={(event) => { event.preventDefault(); onOpenNote(localId(props.href!)!); }}>{props.children}</a> : <components.a {...props} /> } : components}
       >
         {normalizedBody}
       </ReactMarkdown>

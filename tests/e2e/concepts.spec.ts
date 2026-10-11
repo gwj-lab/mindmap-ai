@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ProviderId } from "../../src/shared/types.js";
 
-function fixture(provider: ProviderId): string {
+function fixture(provider: Extract<ProviderId, "chatgpt" | "yuanbao" | "doubao">): string {
   const editor = { chatgpt: '<textarea id="prompt-textarea"></textarea><button data-testid="send-button">发送</button>', yuanbao: '<div class="ql-editor" contenteditable="true"></div><div id="yuanbao-send-btn" role="button">发送</div>', doubao: '<div class="tiptap ProseMirror" contenteditable="true"></div><button data-testid="chat_input_send_button">发送</button>' }[provider];
   const message = (id: string, body: string, streaming = false): string => provider === "chatgpt" ? `<article data-message-author-role="assistant" data-message-id="${id}"${streaming ? ' data-is-streaming="true"' : ""}><div class="markdown">${body}</div></article>` : provider === "yuanbao" ? `<div class="agent-chat__bubble--ai" data-message-id="${id}"${streaming ? ' data-is-streaming="true"' : ""}><div class="agent-chat__bubble__content">${body}</div></div>` : `<div data-testid="receive_message"><div data-testid="message_content" data-message-id="${id}"><div data-testid="message_text_content" data-streaming="${streaming}">${body}</div></div></div>`;
   return `<!doctype html><html><meta charset="utf-8"><body>${editor}${message("source", "<h1>回归模型</h1><p>第一句话。残差是观测值与预测值之差。</p>")}<script>
@@ -29,6 +29,7 @@ for (const provider of ["chatgpt", "yuanbao", "doubao"] as const) test(`${provid
       const isolated = session.fromPartition(`persist:provider-${fixture.provider}`);
       await isolated.protocol.handle("https", () => new Response(fixture.html, { headers: { "Content-Type": "text/html; charset=utf-8" } }));
       const contents = webContents.getAllWebContents().find((contents) => contents.session === isolated)!;
+      if (contents.isLoading()) await new Promise<void>((resolve) => { contents.once("did-stop-loading", resolve); contents.stop(); });
       await contents.loadURL(fixture.url);
     }, { provider, html: fixture(provider), url: { chatgpt: "https://chatgpt.com/c/source", yuanbao: "https://yuanbao.tencent.com/chat/source", doubao: "https://www.doubao.com/chat/source" }[provider] });
     await page.getByRole("button", { name: "捕获最新回答" }).click();
@@ -57,34 +58,78 @@ for (const provider of ["chatgpt", "yuanbao", "doubao"] as const) test(`${provid
     await selectWord();
     await expect(page.getByRole("button", { name: "生成概念：残差", exact: true })).toBeVisible();
     await page.screenshot({ path: `test-results/${provider}-concept-selection.png` });
-    await reader.locator("header strong").click();
+    await reader.locator(".answer-heading strong").click();
     await expect(page.getByRole("button", { name: "生成概念：残差", exact: true })).toHaveCount(0);
+    expect(await page.evaluate(() => document.getSelection()!.rangeCount)).toBe(0);
     expect((await page.evaluate(() => window.mindmapAI.concepts.get())).records).toHaveLength(0);
     await selectWord();
     await page.getByRole("button", { name: "生成概念：残差", exact: true }).click();
     await expect(reader).toBeVisible(); // Background mode leaves the reading context in place.
+    await expect.poll(async () => (await page.evaluate(() => window.mindmapAI.concepts.get())).records.length).toBe(1);
+    const pending = (await page.evaluate(() => window.mindmapAI.concepts.get())).records[0]!;
+    await expect(page.locator(`[id="flexlayout-tabbutton-${pending.tabId}"]`)).toHaveCount(0);
+    await expect.poll(async () => application.evaluate(async ({ webContents }, origin) => {
+      return Promise.all(webContents.getAllWebContents().filter((entry) => entry.getURL().startsWith(origin)).map((contents) => contents.executeJavaScript("document.body.dataset.sentPrompt") as Promise<string>));
+    }, { chatgpt: "https://chatgpt.com/", yuanbao: "https://yuanbao.tencent.com/", doubao: "https://www.doubao.com/" }[provider]).then((sent) => sent.filter(Boolean)), { timeout: 15000 }).toEqual([pending.prompt]);
+    if (provider === "chatgpt") {
+      await page.locator(".concept-node-card").getByRole("button", { name: "查看生成页面", exact: true }).click();
+      await expect(page.locator(`[id="flexlayout-tabbutton-${pending.tabId}"]`)).toBeVisible();
+      await page.locator(".mindmap-canvas .smm-node", { hasText: "回归模型" }).dblclick();
+      await expect(reader).toBeVisible();
+    }
     await expect.poll(async () => (await page.evaluate(() => window.mindmapAI.concepts.get())).records[0]?.status, { timeout: 20000 }).toBe("ready");
     const library = await page.evaluate(() => window.mindmapAI.concepts.get());
     const record = library.records[0]!;
+    await expect(page.locator(`[id="flexlayout-tabbutton-${record.tabId}"]`)).toHaveCount(0);
     expect(record.prompt).toContain("原文中的完整句子是：“残差是观测值与预测值之差。”");
     expect(record.prompt).toContain("当前主题是“回归模型”");
-    const sent = await application.evaluate(async ({ webContents }, origin) => {
-      return Promise.all(webContents.getAllWebContents().filter((entry) => entry.getURL().startsWith(origin)).map((contents) => contents.executeJavaScript("document.body.dataset.sentPrompt") as Promise<string>));
-    }, { chatgpt: "https://chatgpt.com/", yuanbao: "https://yuanbao.tencent.com/", doubao: "https://www.doubao.com/" }[provider]);
-    expect(sent.filter(Boolean)).toEqual([record.prompt]);
+    await expect.poll(async () => application.evaluate(({ webContents }, origin) => webContents.getAllWebContents().filter((entry) => entry.getURL().startsWith(origin)).length, { chatgpt: "https://chatgpt.com/", yuanbao: "https://yuanbao.tencent.com/", doubao: "https://www.doubao.com/" }[provider])).toBe(1);
     await expect(page.getByRole("button", { name: "打开概念：残差", exact: true })).toBeVisible();
+    // Mark and text must share coordinates immediately, before another frame/timer.
+    const alignment = await reader.locator('.answer-pane:not([hidden]) .markdown-preview').evaluate((root) => {
+      const chip = root.querySelector<HTMLButtonElement>('[aria-label="打开概念：残差"]')!;
+      const text = root.querySelector('p')!.firstChild!;
+      const index = text.textContent!.indexOf('残差');
+      const range = document.createRange(); range.setStart(text, index); range.setEnd(text, index + 2);
+      const spacer = document.createElement('div'); spacer.style.height = '1200px'; root.append(spacer);
+      const before = chip.getBoundingClientRect().top;
+      root.scrollTop = 40;
+      const after = chip.getBoundingClientRect().top;
+      const error = Math.abs(after - range.getBoundingClientRect().top + 1);
+      const native = CSS.highlights.size > 0;
+      root.scrollTop = 0; spacer.remove();
+      return { moved: before - after, error, native };
+    });
+    expect(alignment.moved).toBe(40); expect(alignment.error).toBeLessThan(2); expect(alignment.native).toBe(true);
+    const heading = await reader.locator('.answer-pane:not([hidden]) .answer-heading').boundingBox();
+    await page.mouse.move(heading!.x + 30, heading!.y + 10); await page.mouse.down();
+    await page.mouse.move(heading!.x + 90, heading!.y + 35);
+    const dragError = await reader.locator('.answer-pane:not([hidden]) .markdown-preview').evaluate((root) => {
+      const text = root.querySelector('p')!.firstChild!; const index = text.textContent!.indexOf('残差');
+      const range = document.createRange(); range.setStart(text, index); range.setEnd(text, index + 2);
+      return Math.abs(root.querySelector('[aria-label="打开概念：残差"]')!.getBoundingClientRect().top - range.getBoundingClientRect().top + 1);
+    });
+    expect(dragError).toBeLessThan(2); await page.mouse.up();
     await page.getByRole("button", { name: "打开概念：残差", exact: true }).click();
-    await expect(reader.locator(".markdown-preview")).toContainText("概念解释：这是观测值与预测值之差。");
+    await expect(reader.locator(".concept-tab-preview .markdown-preview")).toContainText("概念解释：这是观测值与预测值之差。");
+    await expect(reader.locator('.answer-pane:not([hidden]) .markdown-preview')).toContainText("第一句话。");
+    await reader.locator('.concept-tab-preview .markdown-preview').dblclick({ position: { x: 12, y: 230 } });
+    await expect(reader.getByRole('button', { name: '回退到节点页面', exact: true })).toBeVisible();
+    await expect(reader.locator('.answer-pane:not([hidden]) .markdown-preview')).toContainText("概念解释：这是观测值与预测值之差。");
     await expect(reader.locator(".concept-backlinks")).toContainText("残差是观测值与预测值之差。");
+    await page.screenshot({ path: `test-results/${provider}-concept-full-reader.png` });
+    await reader.getByRole('button', { name: '回退到节点页面', exact: true }).click();
+    await expect(reader.locator('.answer-pane:not([hidden]) .markdown-preview')).toContainText("第一句话。");
+    await reader.getByRole('button', { name: '完整打开概念：残差' }).click();
     await reader.locator(".concept-backlinks button").click();
-    await expect(reader.locator(".markdown-preview")).toContainText("第一句话。");
-    await expect(page.getByRole("button", { name: "生成概念：残差", exact: true })).toBeVisible();
+    await expect(reader.locator('.answer-pane:not([hidden]) .markdown-preview')).toContainText("第一句话。");
+    await expect(page.getByRole("button", { name: "打开概念：残差", exact: true })).toBeVisible();
     const source = await readFile(path.join(root, "answers", `${record.references[0]!.sourceAnswerId}.md`), "utf8");
     const note = await readFile(path.join(root, "answers", `${record.answerId}.md`), "utf8");
     expect(source).toContain(`](${record.answerId}.md)`);
     expect(note).toContain(`](${record.references[0]!.sourceAnswerId}.md)`);
     expect(note).toContain("tags:"); expect(note).toContain("概念");
-    await reader.getByTitle("关闭", { exact: true }).click();
+    await reader.getByRole("button", { name: "关闭阅读窗口", exact: true }).click();
     await page.locator(".concept-node-card").dragTo(page.locator(".mindmap-canvas .smm-node").first());
     await expect(page.locator(".mindmap-canvas .smm-node", { hasText: "残差" })).toBeVisible();
     await page.keyboard.press("Control+s");
@@ -123,6 +168,10 @@ for (const provider of ["chatgpt", "yuanbao", "doubao"] as const) test(`${provid
     const prediction = (await page.evaluate(() => window.mindmapAI.concepts.get())).records.find((entry) => entry.title === "预测值")!;
     expect(prediction.prompt).toContain("残差是观测值与预测值之差。");
     expect(prediction.references[0]!.sourceAnswerId).toBe(record.references[0]!.sourceAnswerId);
+    await application.evaluate(async ({ webContents }, url) => {
+      const contents = webContents.getAllWebContents().find((entry) => entry.getURL() === url)!;
+      await contents.executeJavaScript(`document.querySelectorAll('[data-message-id]').forEach(element => element.removeAttribute('data-message-id'))`);
+    }, sourceUrl);
     await expect.poll(async () => application.evaluate(async ({ webContents }, url) => {
       const contents = webContents.getAllWebContents().find((entry) => entry.getURL() === url)!;
       return contents.executeJavaScript(`Boolean(document.querySelector('[aria-label="打开概念：预测值"]'))`);
@@ -132,8 +181,8 @@ for (const provider of ["chatgpt", "yuanbao", "doubao"] as const) test(`${provid
       await contents.executeJavaScript(`document.querySelector('[aria-label="打开概念：预测值"]').click()`);
     }, sourceUrl);
     await expect(reader).toBeVisible();
-    await expect(reader.locator("header strong")).toHaveText("预测值");
-    await reader.getByTitle("关闭", { exact: true }).click();
+    await expect(reader.locator(".answer-heading strong")).toHaveText("预测值");
+    await reader.getByRole("button", { name: "关闭阅读窗口", exact: true }).click();
     await application.close();
     application = await electron.launch({ args: [".", `--user-data-dir=${profile}`] });
     page = await application.firstWindow(); reader = page.getByLabel("回答阅读器");

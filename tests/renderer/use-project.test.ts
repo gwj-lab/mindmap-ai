@@ -60,7 +60,10 @@ function workspace(activeProjectId = PROJECT_ID): WorkspaceManifest {
 
 function api(overrides: Partial<DesktopApi["project"]> = {}): DesktopApi {
   return {
-    concepts: { get: vi.fn(), settings: vi.fn(), prepare: vi.fn(), retry: vi.fn(), run: vi.fn(), update: vi.fn(), onRequest: vi.fn(() => () => undefined), onChanged: vi.fn(() => () => undefined), onOpen: vi.fn(() => () => undefined) },
+    search: { query: vi.fn().mockResolvedValue([]) },
+    sync: { getSettings: vi.fn(), saveSettings: vi.fn(), clearSettings: vi.fn(), testConnection: vi.fn(), upload: vi.fn(), download: vi.fn() },
+    clipboard: { readText: vi.fn(), writeText: vi.fn() },
+    concepts: { get: vi.fn(), settings: vi.fn(), questionSettings: vi.fn(), prepare: vi.fn(), prepareQuestion: vi.fn(), retry: vi.fn(), run: vi.fn(), update: vi.fn(), onRequest: vi.fn(() => () => undefined), onQuestionRequest: vi.fn(() => () => undefined), onChanged: vi.fn(() => () => undefined), onOpen: vi.fn(() => () => undefined) },
     settings: {
       getPublicSettings: vi.fn(), updatePublicSettings: vi.fn(), testConnection: vi.fn(), setApiKey: vi.fn(), clearApiKey: vi.fn()
     },
@@ -69,6 +72,7 @@ function api(overrides: Partial<DesktopApi["project"]> = {}): DesktopApi {
       switchRecent: vi.fn(), forgetRecent: vi.fn()
     },
     project: {
+      createAttachment: vi.fn().mockResolvedValue(null),
       create: vi.fn(), open: vi.fn(), save: vi.fn(), readAnswer: vi.fn(), writeAnswer: vi.fn(),
       createNested: vi.fn(), switch: vi.fn(), rename: vi.fn(), saveActive: vi.fn(), openInExplorer: vi.fn(),
       reparent: vi.fn(), linkNode: vi.fn(),

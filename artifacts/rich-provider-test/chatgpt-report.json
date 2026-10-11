@@ -1,0 +1,24 @@
+{
+  "provider": "chatgpt",
+  "source": "real DOM and computed styles replayed in production sandboxed Electron preload",
+  "headings": [
+    "一、国产 AI 对话模型网页端日活排名",
+    "二、按网页访问量排名（2026 年 6 月）",
+    "三、为什么两个排名不一致？"
+  ],
+  "code": [],
+  "formulas": 0,
+  "snapshotFormulas": 0,
+  "snapshots": 1,
+  "tableAlign": [
+    "left",
+    "left",
+    "right",
+    "left",
+    "left",
+    "right",
+    "right"
+  ],
+  "tableBreaks": 0,
+  "tasks": []
+}

@@ -26,6 +26,8 @@ interface SettingsReader {
 }
 
 interface CaptureServiceOptions {
+  captureMode?: UiPreferences['captureMode'];
+  onCaptured?(acknowledgement: Extract<CaptureAcknowledgement, { status: "captured" }>): void;
   expansionPrompt?: string;
   portable?: boolean;
   titleService?: TitleExtractor;
@@ -54,9 +56,10 @@ export class CaptureService {
   async capture(payload: CapturedAnswerPayload): Promise<CaptureAcknowledgement> {
     try {
       const hash = await contentHash(payload.markdown);
-      const preferences = this.options.portable
+      const savedPreferences = this.options.portable
         ? (await this.store.loadPortable()).state.uiPreferences
         : LEGACY_PREFERENCES;
+      const preferences = { ...savedPreferences, captureMode: this.options.captureMode ?? savedPreferences.captureMode };
       const local = localTitles(payload.markdown, preferences.captureMode);
       const now = new Date().toISOString();
       const answer: AnswerDocument = {
@@ -74,19 +77,17 @@ export class CaptureService {
       };
 
       await this.store.writeAnswer(answer);
-      const extracted = await this.#extractTitles(payload.markdown, preferences, local);
       const candidate: CandidateNode = {
         id: `candidate-${answer.metadata.id}`,
         answerId: answer.metadata.id,
-        title: extracted.title,
+        title: local.title,
         extractionMode: preferences.captureMode,
-        children: extracted.subtitles.map((title) => ({ id: crypto.randomUUID(), title })),
+        children: [],
         createdAt: now
       };
 
-      if (this.options.portable) {
-        await this.store.appendPortableCandidate(candidate);
-      } else {
+      const persist = async (): Promise<void> => {
+        if (this.options.portable) { await this.store.appendPortableCandidate(candidate); return; }
         const snapshot = await this.store.load();
         await this.store.save({
           ...snapshot,
@@ -98,7 +99,14 @@ export class CaptureService {
             ]
           }
         });
-      }
+      };
+      await persist();
+      this.options.onCaptured?.({ status: "captured", answer, candidate: structuredClone(candidate), phase: "saved" });
+      const extracted = await this.#extractTitles(payload.markdown, preferences, local);
+      candidate.title = extracted.title;
+      candidate.children = preferences.captureMode === "expanded" ? extracted.subtitles.map((title) => ({ id: crypto.randomUUID(), title })) : [];
+      try { await persist(); }
+      catch { return { status: "captured", answer, candidate: { ...candidate, title: local.title, children: [] }, apiWarning: "原文已保存，节点生成结果保存失败，请重新捕获" }; }
       return { status: "captured", answer, candidate, ...(extracted.apiWarning ? { apiWarning: extracted.apiWarning } : {}) };
     } catch (error) {
       return {

@@ -44,7 +44,7 @@ describe("AI panel capture controls", () => {
     expect(ai.pickAnswer).toHaveBeenCalledWith("doubao-tab");
     expect(ai.setHoverCapture).toHaveBeenCalledWith(true, "doubao-tab");
     fireEvent.change(screen.getByRole("textbox", { name: "分点要求（可选）" }), { target: { value: "Compare the options" } });
-    expect(ai.setExpansionPrompt).toHaveBeenLastCalledWith("Compare the options", "doubao-tab");
+    expect(ai.setExpansionPrompt).toHaveBeenLastCalledWith("Compare the options", "doubao-tab", "expanded");
   });
 
   test("allows optional splitting requirements and clears them in single mode", () => {
@@ -53,12 +53,12 @@ describe("AI panel capture controls", () => {
     const input = screen.getByRole("textbox", { name: "分点要求（可选）" });
     expect(input).toHaveValue("");
     fireEvent.change(input, { target: { value: "半导体的流程有哪些？" } });
-    expect(ai.setExpansionPrompt).toHaveBeenLastCalledWith("半导体的流程有哪些？", "ai");
+    expect(ai.setExpansionPrompt).toHaveBeenLastCalledWith("半导体的流程有哪些？", "ai", "expanded");
     fireEvent.click(screen.getByRole("button", { name: "捕获最新回答" }));
     expect(ai.captureLatest).toHaveBeenCalledTimes(1);
     view.rerender(<AiPanel {...props} captureMode="single" />);
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-    expect(ai.setExpansionPrompt).toHaveBeenLastCalledWith("", "ai");
+    expect(ai.setExpansionPrompt).toHaveBeenLastCalledWith("", "ai", "single");
     view.rerender(<AiPanel {...props} captureMode="expanded" />);
     expect(screen.getByRole("textbox")).toHaveValue("半导体的流程有哪些？");
     view.unmount();

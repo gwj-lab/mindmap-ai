@@ -20,6 +20,7 @@ vi.mock("electron", () => ({
     webContents = {
       session: { setPermissionCheckHandler: vi.fn(), setPermissionRequestHandler: vi.fn() },
       on: vi.fn(), setWindowOpenHandler: vi.fn(), send: vi.fn(), loadURL: vi.fn().mockResolvedValue(undefined),
+      isLoading: () => false,
       isDestroyed: () => this.destroyed, close: vi.fn(() => { this.destroyed = true; })
     };
     setBackgroundColor = vi.fn();
@@ -62,11 +63,11 @@ describe("AI tab views", () => {
     const [chatgpt, doubao] = harness.views;
     manager.setVisible(true, "ai");
     manager.setVisible(true, "doubao-tab");
-    manager.setExpansionPrompt("Compare", "doubao-tab");
+    manager.setExpansionPrompt("Compare", "doubao-tab", "expanded");
     manager.requestCapture("doubao-tab");
     expect(doubao.webContents.send).toHaveBeenCalledWith("ai:capture-latest");
     expect(chatgpt.webContents.send).not.toHaveBeenCalled();
-    expect(manager.getCaptureContext(doubao.webContents as unknown as Electron.WebContents)).toEqual({ provider: "doubao", expansionPrompt: "Compare" });
+    expect(manager.getCaptureContext(doubao.webContents as unknown as Electron.WebContents)).toEqual({ provider: "doubao", expansionPrompt: "Compare", captureMode: "expanded" });
     expect(manager.getCaptureContext(chatgpt.webContents as unknown as Electron.WebContents)?.expansionPrompt).toBe("");
     expect(manager.getCaptureContext({} as Electron.WebContents)).toBeNull();
     manager.setDragging(true);
@@ -76,6 +77,20 @@ describe("AI tab views", () => {
     manager.setDragging(false);
     expect(chatgpt.setVisible).toHaveBeenLastCalledWith(false);
     expect(doubao.setVisible).toHaveBeenLastCalledWith(true);
+    manager.destroy();
+  });
+
+  test("background concepts survive visible-tab sync and close without touching the source page", () => {
+    const manager = createManager();
+    manager.startBackgroundConcept({ id: "concept-background", provider: "doubao" }, "concept-id", "完整句子");
+    const [source, background] = harness.views;
+    expect(background.setVisible).toHaveBeenLastCalledWith(false);
+    expect(background.webContents.send).toHaveBeenCalledWith("concepts:generate", { id: "concept-id", provider: "doubao", prompt: "完整句子" });
+    manager.syncTabs([{ id: "ai", provider: "chatgpt" }]);
+    expect(background.webContents.isDestroyed()).toBe(false);
+    manager.closeBackgroundConcept("concept-background");
+    expect(background.webContents.isDestroyed()).toBe(true);
+    expect(source.webContents.isDestroyed()).toBe(false);
     manager.destroy();
   });
 });

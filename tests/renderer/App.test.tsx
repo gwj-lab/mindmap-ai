@@ -19,13 +19,13 @@ const harness = vi.hoisted(() => ({
 vi.mock("flexlayout-react", () => ({
   Model: { fromJson: vi.fn(() => ({ toJson: () => ({}), visitNodes: () => {} })) },
   Layout: ({ factory }: { factory(node: { getComponent(): string; getId(): string; getConfig(): object; isVisible(): boolean }): React.ReactNode }) => (
-    <div data-testid="dock-layout">{factory({ getComponent: () => "ai", getId: () => "ai", getConfig: () => ({}), isVisible: () => true })}</div>
+    <div data-testid="dock-layout">{["ai", "mindmap"].map((component) => <div key={component}>{factory({ getComponent: () => component, getId: () => component, getConfig: () => ({}), isVisible: () => true })}</div>)}</div>
   )
 }));
-vi.mock("../../src/renderer/src/components/MindMapPanel.js", () => ({ MindMapPanel: () => null }));
+vi.mock("../../src/renderer/src/components/MindMapPanel.js", () => ({ MindMapPanel: ({ onOpenAnswer }: { onOpenAnswer(answerId: string, nodeUid: string): void }) => <div><button onClick={() => onOpenAnswer("answer-one", "node-one")}>阅读节点一</button><button onClick={() => onOpenAnswer("answer-two", "node-two")}>阅读节点二</button></div> }));
 vi.mock("../../src/renderer/src/components/NodeTray.js", () => ({ NodeTray: () => null }));
 vi.mock("../../src/renderer/src/components/StylePanel.js", () => ({ StylePanel: () => null }));
-vi.mock("../../src/renderer/src/components/AnswerDialog.js", () => ({ AnswerDialog: () => null }));
+vi.mock("../../src/renderer/src/components/AnswerDialog.js", () => ({ AnswerDialog: ({ answerId, hidden, onClose }: { answerId: string; hidden?: boolean; onClose(): void }) => <aside aria-label="回答阅读器" hidden={hidden}>{answerId}<button onClick={onClose}>关闭 {answerId}</button></aside> }));
 vi.mock("../../src/renderer/src/state/use-project.js", () => ({
   useProject: Object.assign((selector?: (state: Record<string, unknown>) => unknown) =>
     selector ? selector(harness.state as Record<string, unknown>) : harness.state, { getState: () => harness.state })
@@ -152,5 +152,24 @@ describe("App workspace flows", () => {
     fireEvent.click(screen.getByRole("button", { name: "切换工作区" }));
     expect(screen.getByRole("dialog", { name: "切换工作区" })).toBeInTheDocument();
     expect(screen.getByText("C:\\研究")).toBeInTheDocument();
+  });
+
+  test("opens multiple readers, reuses existing windows and hides them without closing", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "阅读节点一" }));
+    await screen.findByText("answer-one");
+    fireEvent.click(screen.getByRole("button", { name: "阅读节点二" }));
+    await waitFor(() => expect(screen.getAllByLabelText("回答阅读器")).toHaveLength(2));
+    const readerOrder = screen.getAllByLabelText("回答阅读器");
+    fireEvent.click(screen.getByRole("button", { name: "阅读节点一" }));
+    expect(screen.getAllByLabelText("回答阅读器")).toHaveLength(2);
+    expect(screen.getAllByLabelText("回答阅读器")).toEqual(readerOrder);
+    fireEvent.click(screen.getByRole("button", { name: "返回工作区", exact: true }));
+    expect(screen.getAllByLabelText("回答阅读器").every((reader) => reader.hasAttribute("hidden"))).toBe(true);
+    expect(window.mindmapAI.ai.setPanelVisible).toHaveBeenLastCalledWith(true);
+    fireEvent.click(screen.getByRole("button", { name: "显示阅读窗口" }));
+    expect(screen.getAllByLabelText("回答阅读器").every((reader) => !reader.hasAttribute("hidden"))).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "关闭 answer-two" }));
+    expect(screen.getAllByLabelText("回答阅读器")).toHaveLength(1);
   });
 });

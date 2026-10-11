@@ -32,6 +32,44 @@ const payload = {
 };
 
 describe("portable CaptureService", () => {
+  test('uses the current UI mode even before its autosave finishes', async () => {
+    const { store } = await setup('single');
+    const expanded = await new CaptureService(store, { portable: true, captureMode: 'expanded' }).capture(payload);
+    expect(expanded).toMatchObject({ status: 'captured', candidate: { extractionMode: 'expanded', children: [{ title: 'First child' }, { title: 'Second child' }] } });
+    const single = await new CaptureService(store, { portable: true, captureMode: 'single' }).capture(payload);
+    expect(single).toMatchObject({ status: 'captured', candidate: { extractionMode: 'single', children: [] } });
+  });
+  test('retains the original document and candidate if saving generated nodes fails', async () => {
+    const { store } = await setup('expanded');
+    const append = store.appendPortableCandidate.bind(store);
+    vi.spyOn(store, 'appendPortableCandidate').mockImplementationOnce(append).mockRejectedValueOnce(new Error('disk full'));
+    const result = await new CaptureService(store, { portable: true }).capture(payload);
+    expect(result).toMatchObject({ status: 'captured', candidate: { children: [] }, apiWarning: expect.stringContaining('原文已保存') });
+    expect((await store.listAnswerDocuments())[0]!.body).toBe(payload.markdown);
+    expect((await store.loadPortable()).state.candidates).toHaveLength(1);
+  });
+  test('persists and notifies the captured document before a slow child generation finishes', async () => {
+    const { store } = await setup('expanded', 'api');
+    let finish!: (value: { title: string; subtitles: string[] }) => void;
+    const api = { extract: vi.fn(() => new Promise<{ title: string; subtitles: string[] }>((resolve) => { finish = resolve; })) };
+    const onCaptured = vi.fn();
+    const settings = { getPublicSettings: vi.fn().mockResolvedValue({ baseUrl: 'https://api.example/v1', model: 'model', hasApiKey: true }), getApiKey: vi.fn().mockResolvedValue('secret') };
+    const pending = new CaptureService(store, { portable: true, titleService: api, settingsStore: settings, onCaptured }).capture(payload);
+    await vi.waitFor(() => expect(api.extract).toHaveBeenCalled());
+    expect(onCaptured).toHaveBeenCalledOnce();
+    expect((await store.loadPortable()).state.candidates).toHaveLength(1);
+    expect((await store.listAnswerDocuments())[0]!.body).toBe(payload.markdown);
+    finish({ title: '生成的主题', subtitles: ['生成的子节点'] });
+    await pending;
+    const candidates = (await store.loadPortable()).state.candidates;
+    expect(candidates).toHaveLength(1); expect(candidates[0]!.children?.[0]!.title).toBe('生成的子节点');
+  });
+  test('single mode never adds children even if a title extractor returns subtitles', async () => {
+    const { store } = await setup('single', 'api');
+    const settings = { getPublicSettings: vi.fn().mockResolvedValue({ baseUrl: 'https://api.example/v1', model: 'model', hasApiKey: true }), getApiKey: vi.fn().mockResolvedValue('secret') };
+    const result = await new CaptureService(store, { portable: true, titleService: { extract: vi.fn().mockResolvedValue({ title: '主题', subtitles: ['不应添加'] }) }, settingsStore: settings }).capture(payload);
+    expect(result).toMatchObject({ status: 'captured', candidate: { children: [] } });
+  });
   test("uses custom requirements for expanded API capture even with local default titles", async () => {
     const { store } = await setup("expanded", "local");
     const api = { extract: vi.fn().mockResolvedValue({ title: "生产流程", subtitles: ["晶圆制备", "光刻"] }) };

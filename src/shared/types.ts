@@ -1,4 +1,4 @@
-export type ProviderId = "chatgpt" | "yuanbao" | "doubao";
+export type ProviderId = "chatgpt" | "yuanbao" | "doubao" | "deepseek" | "kimi";
 
 export interface AiTab {
   id: string;
@@ -6,7 +6,9 @@ export interface AiTab {
 }
 
 export interface AnswerMetadata {
+  origin?: 'local';
   conceptId?: string;
+  annotationId?: string;
   tags?: string[];
   id: string;
   provider: ProviderId;
@@ -200,7 +202,7 @@ export interface CapturedAnswerPayload {
 }
 
 export type CaptureAcknowledgement =
-  | { status: "captured"; answer: AnswerDocument; candidate: CandidateNode; apiWarning?: string }
+  | { status: "captured"; answer: AnswerDocument; candidate: CandidateNode; apiWarning?: string; phase?: "saved" | "complete"; projectId?: string; workspaceId?: string }
   | { status: "duplicate"; answerId: string }
   | { status: "failed"; message: string };
 
@@ -231,14 +233,27 @@ export interface AiConnectionTestResult {
 }
 
 export interface DesktopApi {
+  sync: {
+    getSettings(): Promise<import('./sync.js').PublicS3Settings>;
+    saveSettings(input: import('./sync.js').S3SettingsInput): Promise<import('./sync.js').PublicS3Settings>;
+    clearSettings(): Promise<void>;
+    testConnection(): Promise<string>;
+    upload(): Promise<import('./sync.js').S3TransferResult>;
+    download(): Promise<WorkspaceOpenResult | null>;
+  };
+  search: { query(query: string, includeContent: boolean): Promise<import('./search.js').NodeSearchResult[]> };
+  clipboard: { readText(): Promise<string>; writeText(text: string): Promise<void> };
   concepts: {
     get(): Promise<import("./concepts.js").ConceptLibrary>;
     settings(settings: import("./concepts.js").ConceptSettings): Promise<import("./concepts.js").ConceptLibrary>;
+    questionSettings(settings: import("./concepts.js").QuestionSettings): Promise<import("./concepts.js").ConceptLibrary>;
     prepare(request: import("./concepts.js").ConceptRequest): Promise<import("./concepts.js").ConceptJob>;
+    prepareQuestion(request: import("./concepts.js").QuestionRequest): Promise<import("./concepts.js").ConceptJob>;
     retry(id: string): Promise<import("./concepts.js").ConceptJob>;
-    run(id: string): Promise<void>;
+    run(id: string, background?: boolean): Promise<void>;
     update(id: string, action: "trash" | "restore" | "delete" | "rename", title?: string): Promise<import("./concepts.js").ConceptLibrary>;
     onRequest(listener: (request: import("./concepts.js").ConceptRequest) => void): () => void;
+    onQuestionRequest(listener: (request: import("./concepts.js").ConceptRequest) => void): () => void;
     onChanged(listener: (workspaceId: string) => void): () => void;
     onOpen(listener: (answerId: string) => void): () => void;
   };
@@ -259,6 +274,7 @@ export interface DesktopApi {
     forgetRecent(id: string): Promise<RecentWorkspaceEntry[]>;
   };
   project: {
+    createAttachment(nodeUid: string, kind: 'blank' | 'import'): Promise<AnswerDocument | null>;
     create(): Promise<ProjectSnapshot | null>;
     open(): Promise<ProjectSnapshot | null>;
     save(snapshot: ProjectSnapshot): Promise<SaveResult>;
@@ -283,7 +299,7 @@ export interface DesktopApi {
     captureLatest(tabId?: string): void;
     pickAnswer(tabId?: string): void;
     setHoverCapture(enabled: boolean, tabId?: string): void;
-    setExpansionPrompt(prompt: string, tabId?: string): void;
+    setExpansionPrompt(prompt: string, tabId?: string, captureMode?: UiPreferences['captureMode']): void;
     beginLocalDrag(): void;
     endLocalDrag(): void;
     onAnswerCaptured(listener: (acknowledgement: Extract<CaptureAcknowledgement, { status: "captured" }>) => void): () => void;

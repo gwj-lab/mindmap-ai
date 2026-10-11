@@ -1,0 +1,46 @@
+{
+  "provider": "deepseek",
+  "source": "real DOM and computed styles replayed in production sandboxed Electron preload",
+  "headings": [
+    "回答格式验收",
+    "一级标题",
+    "二级标题",
+    "三级标题",
+    "四级标题",
+    "五级标题",
+    "六级标题",
+    "Footnotes"
+  ],
+  "code": [
+    {
+      "language": "language-javascript",
+      "text": "function greet(name) {\n  const msg = `Hello, ${name}!`;\n  // 空行与缩进保留\n\n  return msg;\n}\n\nconsole.log(greet(\"World\"));\n"
+    },
+    {
+      "language": "language-python",
+      "text": "def calc(x):\n    total = x + 100\n    # 空行与缩进保留\n\n    return total\n\nprint(calc(5))\n"
+    },
+    {
+      "language": "language-mermaid",
+      "text": "graph TD\n  A[开始] --> B{判断}\n  B -->|是| C[执行]\n  B -->|否| D[结束]\n"
+    },
+    {
+      "language": "language-text",
+      "text": "保留缩进：\n    第一行\n        第二行\n\n空行上方有一个空行\n反引号：`\n美元：$100\n"
+    }
+  ],
+  "formulas": 12,
+  "snapshotFormulas": 0,
+  "snapshots": 0,
+  "tableAlign": [
+    "left",
+    "left",
+    "left",
+    "left"
+  ],
+  "tableBreaks": 1,
+  "tasks": [
+    true,
+    false
+  ]
+}

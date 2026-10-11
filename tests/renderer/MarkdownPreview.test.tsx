@@ -4,13 +4,38 @@ import React from "react";
 import { createRequire } from "node:module";
 import { describe, expect, test } from "vitest";
 import { MarkdownPreview } from "../../src/renderer/src/components/MarkdownPreview.js";
+import { readFileSync } from 'node:fs';
+import { kimiToMarkdown } from '../../src/preload/kimi-adapter.js';
 
 describe("MarkdownPreview", () => {
-  test("renders new-platform table breaks safely while keeping ChatGPT rendering unchanged", () => {
+  test('keeps footnote references and return anchors with concept-note links enabled', () => {
+    const { container } = render(<MarkdownPreview body={'Footnote [^note].\n\n[^note]: Body.'} onOpenNote={() => {}} />);
+    expect(container.querySelector('[data-footnote-ref]')?.getAttribute('href')).toBe('#user-content-fn-note');
+    expect(container.querySelector('[data-footnote-ref]')?.id).toBe('user-content-fnref-note');
+    expect(container.querySelector('[data-footnote-backref]')?.getAttribute('href')).toBe('#user-content-fnref-note');
+  });
+  test('renders every real Kimi fallback equation as an inert formula frame', () => {
+    const source = document.createElement('div');
+    source.innerHTML = readFileSync('tests/fixtures/kimi/format-answer.html', 'utf8');
+    const { container } = render(<MarkdownPreview body={kimiToMarkdown(source, 'https://www.kimi.com/')} provider="kimi" />);
+    const frames = [...container.querySelectorAll('iframe')];
+    expect(frames).toHaveLength(14);
+    expect(frames.every((frame) => frame.getAttribute('sandbox') === '')).toBe(true);
+    expect(frames.at(-1)?.srcdoc).toContain('katex-html');
+    expect(container.querySelector('.katex')).toBeNull();
+  });
+  test('does not interpret escaped footnote markers as TeX', () => {
+    const { container } = render(<MarkdownPreview body={String.raw`Footnote \[^note\].
+
+\[^note\]: Body.`} provider="deepseek" />);
+    expect(container.querySelector('.katex')).toBeNull();
+    expect(container.textContent).toContain('[^note]');
+  });
+  test("renders table cell breaks safely on all providers", () => {
     const body = "| A | B |\n| --- | --- |\n| one<br>two | <img src=x onerror=alert(1)>unsafe |";
     const chatgpt = render(<MarkdownPreview body={body} />);
-    expect(chatgpt.container.querySelector("td br")).toBeNull();
-    for (const provider of ["doubao", "yuanbao"] as const) {
+    expect(chatgpt.container.querySelectorAll("td br")).toHaveLength(1);
+    for (const provider of ["doubao", "yuanbao", "deepseek", "kimi"] as const) {
       const result = render(<MarkdownPreview body={body} provider={provider} />);
       expect(result.container.querySelectorAll("td br")).toHaveLength(1);
       expect(result.container.querySelector("img")).toBeNull();

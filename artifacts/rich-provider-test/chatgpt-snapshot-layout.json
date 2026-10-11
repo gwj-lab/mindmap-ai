@@ -1,0 +1,16 @@
+{
+  "height": 2031.1875,
+  "width": 788,
+  "style": null,
+  "html": "<div dir=\"auto\" style=\"display: block; flex-flow: row; flex: 0 1 auto; align-items: normal; align-self: auto; justify-content: normal; gap: normal; grid-template-columns: none; grid-template-rows: none; color: rgb(13, 13, 13); background-color: rgba(0, 0, 0, 0); font-family: -apple-system-body, ui-s",
+  "chart": {
+    "x": 18,
+    "y": 764.765625,
+    "width": 752,
+    "height": 340,
+    "top": 764.765625,
+    "right": 770,
+    "bottom": 1104.765625,
+    "left": 18
+  }
+}

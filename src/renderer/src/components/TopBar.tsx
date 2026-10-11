@@ -1,7 +1,10 @@
 import { FolderOpen, LayoutDashboard, Plus, Save, Sparkles, SwitchCamera } from "lucide-react";
 import { useProject, type SaveStatus } from "../state/use-project.js";
+import type { ReactNode } from 'react';
 
 interface TopBarProps {
+  search?: ReactNode;
+  onSync?(): void;
   projectName?: string;
   readOnly?: boolean;
   onCreate(): void;
@@ -31,6 +34,7 @@ export function TopBar(props: TopBarProps): React.JSX.Element {
         </div>
       </div>
       <nav className="top-actions" aria-label="项目操作">
+        {props.onSync && <button onClick={props.onSync}>S3 同步</button>}
         <button onClick={props.onCreate}><Plus size={16} />新建工作区</button>
         <button onClick={props.onOpen}><FolderOpen size={16} />打开工作区</button>
         <button onClick={props.onSwitchWorkspace}><SwitchCamera size={16} />切换工作区</button>
@@ -38,6 +42,7 @@ export function TopBar(props: TopBarProps): React.JSX.Element {
         <span className="action-divider" />
         <button onClick={props.onResetLayout} disabled={!props.projectName || props.readOnly}><LayoutDashboard size={16} />恢复布局</button>
       </nav>
+      {props.search}
       <div className={`save-state save-state--${saveStatus}`}>
         <i />{props.readOnly ? "只读项目" : labels[saveStatus]}
       </div>

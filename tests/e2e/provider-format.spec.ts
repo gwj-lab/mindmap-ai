@@ -28,6 +28,8 @@ for (const provider of ["chatgpt", "yuanbao", "doubao"] as const) {
         // preload and IPC. No website request or account is needed in this test.
         await isolated.protocol.handle("https", () => new Response("<!doctype html><html><head><meta charset=utf-8></head><body>" + fixture.html + "</body></html>", { headers: { "Content-Type": "text/html; charset=utf-8" } }));
         const contents = webContents.getAllWebContents().find((entry) => entry.session === isolated)!;
+        contents.stop();
+        await new Promise((resolve) => setTimeout(resolve, 100));
         await contents.loadURL(fixture.sourceUrl);
       }, { provider, sourceUrl, html: provider === "chatgpt" ? `<article data-message-author-role="assistant" data-message-id="chatgpt-format-test">${html}</article>` : html });
       await expect.poll(() => application.evaluate(async ({ session, webContents }, selectedProvider) => {
@@ -51,7 +53,9 @@ for (const provider of ["chatgpt", "yuanbao", "doubao"] as const) {
         expect(answer!.body).toBe(previous.replace(/\r\n/g, "\n").trim());
       }
       await writeFile(`test-results/${provider}-saved-note.md`, saved);
-      await candidate.dragTo(page.locator(".mindmap-canvas .smm-node").first());
+      await candidate.dragTo(page.locator(".mindmap-canvas .smm-node").first(), { sourcePosition: { x: 12, y: 12 } });
+      if (await candidate.isVisible()) await candidate.dragTo(page.locator(".mindmap-canvas .smm-node").first(), { sourcePosition: { x: 12, y: 12 } });
+      await expect(candidate).toHaveCount(0);
       const answerNode = page.locator(".mindmap-canvas .smm-node", { hasText: captured.title }).first();
       await answerNode.dblclick();
       const reader = page.getByLabel("回答阅读器");

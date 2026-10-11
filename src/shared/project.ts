@@ -1,3 +1,4 @@
+import { PROVIDER_IDS } from "./ai-providers.js";
 import path from "node:path";
 import { z } from "zod";
 import type { AnswerDocument, AnswerMetadata, CandidateNode, MindMapNodeData, ProjectManifest } from "./types.js";
@@ -13,10 +14,12 @@ export const projectManifestSchema = z.object({
 });
 
 export const answerMetadataSchema = z.object({
+  origin: z.literal('local').optional(),
   conceptId: z.string().uuid().optional(),
+  annotationId: z.string().uuid().optional(),
   tags: z.array(z.string().max(40)).max(10).optional(),
   id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/),
-  provider: z.enum(["chatgpt", "yuanbao", "doubao"]),
+  provider: z.enum(PROVIDER_IDS),
   title: z.string().trim().min(1).max(160),
   sourceUrl: z.string().url().startsWith("https://"),
   sourceMessageId: z.string().min(1).max(256),

@@ -106,12 +106,12 @@ test("records interaction timings with a 1000-node, 100-project workspace", asyn
     await target.dblclick();
     await expect(page.getByLabel("回答阅读器")).toBeVisible();
     const answerOpenMs = Date.now() - editStarted;
-    await expect(page.getByLabel("回答阅读器")).toContainText("Performance answer 0");
+    await expect(page.getByLabel("回答阅读器")).toContainText("Perf node 0000");
     const previewStarted = Date.now();
     await expect(page.locator(".markdown-preview .katex-display")).toHaveCount(100, { timeout: 15_000 });
     const markdownPreviewMs = Date.now() - previewStarted;
     const dragStarted = Date.now();
-    await page.getByLabel("回答阅读器").locator("header").hover();
+    await page.getByLabel("回答阅读器").locator(".answer-pane:not([hidden]) > header").hover();
     await page.mouse.down();
     await page.mouse.move(240, 170, { steps: 8 });
     await page.mouse.up();

@@ -1,4 +1,5 @@
 import { contentHash, htmlToMarkdown } from "../shared/content.js";
+import { chatgptRichToMarkdown, isRichChatgpt } from './chatgpt-rich.js';
 import type { CapturedAnswerPayload, CaptureAcknowledgement } from "../shared/types.js";
 
 function providerForUrl(sourceUrl: string): CapturedAnswerPayload["provider"] {
@@ -37,7 +38,9 @@ function isAssistant(element: Element): boolean {
 export function isAssistantMessageStreaming(element: Element): boolean {
   return element.getAttribute("data-is-streaming") === "true"
     || Boolean(element.querySelector('[data-is-streaming="true"]'))
-    || Boolean(element.querySelector('[data-testid="stop-button"], button[aria-label*="Stop"], button[aria-label*="停止"]'));
+    || Boolean(element.querySelector('[data-testid="stop-button"], button[aria-label*="Stop"], button[aria-label*="停止"]'))
+    || (element === [...element.ownerDocument.querySelectorAll('[data-content-search-unit-key], [data-message-author-role="assistant"]')].filter(isAssistant).at(-1)
+      && Boolean(element.ownerDocument.querySelector('[data-testid="stop-button"], button[aria-label="停止流式传输"], button[aria-label="Stop streaming"]')));
 }
 
 export function findAssistantMessage(target: EventTarget | null, sourceUrl = "https://chatgpt.com/"): Element | null {
@@ -61,6 +64,13 @@ function messageContent(message: Element, sourceUrl: string): Element {
   const provider = providerForUrl(sourceUrl);
   if (provider === "yuanbao") return message.querySelector(".agent-chat__bubble__content, .hyc-common-markdown, .markdown") ?? message;
   if (provider === "doubao") return message.querySelector(".markdown, [class*='markdown'], [data-testid='message_text_content'], [data-testid='message_content']") ?? message;
+  const parts = [...message.querySelectorAll('[data-markdown-text-style="assistant-message"]')];
+  if (parts.length > 1) {
+    if (parts.some(isRichChatgpt)) return message;
+    const body = message.ownerDocument.createElement('div');
+    parts.forEach((part) => body.append(part.cloneNode(true)));
+    return body;
+  }
   return message.querySelector(
     "[data-selected-text-overlay-target][data-markdown-text-style], [data-markdown-text-style], .markdown, [data-message-content], [class*='markdown']"
   ) ?? message;
@@ -93,7 +103,7 @@ export async function extractSelectedAnswer(
   sourceUrl: string,
   messageContainer: Element = content
 ): Promise<CapturedAnswerPayload> {
-  const markdown = htmlToMarkdown(content);
+  const markdown = isRichChatgpt(content) ? chatgptRichToMarkdown(content, sourceUrl) : htmlToMarkdown(content);
   if (!markdown.trim()) throw new Error("Selected answer is empty");
   const fallbackId = `assistant-${(await contentHash(markdown)).slice(0, 16)}`;
   const selectionMessageId = messageContainer.matches("[data-chatgpt-selection-message-id]")

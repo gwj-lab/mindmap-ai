@@ -16,10 +16,12 @@
     "src/renderer/**/*.ts",
     "src/renderer/**/*.tsx",
     "src/shared/types.ts",
+    "src/shared/search.ts",
+    "src/shared/sync.ts",
     "src/shared/ai-providers.ts",
     "src/shared/concepts.ts",
     "src/shared/concept-selection.ts",
-    "src/shared/content.ts",
+    "src/shared/content.ts", "src/shared/rich-answer.ts",
     "src/shared/title-extraction.ts",
     "src/shared/layout.ts",
     "src/shared/vendor.d.ts"

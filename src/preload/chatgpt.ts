@@ -1,9 +1,9 @@
 import { ipcRenderer } from "electron";
-import type { CapturedAnswerPayload, CaptureAcknowledgement } from "../shared/types.js";
+import type { CapturedAnswerPayload, CaptureAcknowledgement, ProviderId } from "../shared/types.js";
 import { CaptureDelivery } from "./chatgpt-adapter.js";
-import { extractAnswerFromTarget, extractLatestAnswer, findAssistantMessage } from "./answer-adapter.js";
+import { extractAnswerFromTarget, extractLatestAnswer, findAssistantMessage, setNativeMarkdownReader } from "./answer-adapter.js";
 import { HoverCaptureController } from "./hover-capture.js";
-import { ConceptSelectionController } from "../shared/concept-selection.js";
+import { ConceptSelectionController, findConceptRange } from "../shared/concept-selection.js";
 import { generateConcept } from "./concept-generation.js";
 import type { ConceptRecord } from "../shared/concepts.js";
 
@@ -16,16 +16,28 @@ const IPC = {
 } as const;
 
 const delivery = new CaptureDelivery();
+setNativeMarkdownReader(async (message) => {
+  const token = crypto.randomUUID();
+  message.setAttribute('data-mindmap-copy-target', token);
+  try { return await ipcRenderer.invoke('ai:read-native-markdown', token) as string | null; }
+  catch { return null; }
+  finally { message.removeAttribute('data-mindmap-copy-target'); }
+});
 let pickerCleanup: (() => void) | undefined;
 let hoverController: HoverCaptureController | undefined;
 let conceptController: ConceptSelectionController | undefined;
 let conceptRecords: ConceptRecord[] = [];
 let generation: AbortController | null = null;
 function paintConcepts(): void {
-  const marks = conceptRecords.flatMap((record) => record.status === "ready" || record.status === "generating" ? record.references.filter((ref) => ref.sourceUrl === location.href).flatMap((ref) => {
-    const messages = document.querySelectorAll('[data-message-author-role="assistant"],.agent-chat__bubble--ai,[data-testid="receive_message"]');
-    const root = [...messages].find((message) => message.getAttribute("data-message-id") === ref.sourceMessageId || message.querySelector("[data-message-id]")?.getAttribute("data-message-id") === ref.sourceMessageId || message.querySelector("[data-trace-id]")?.getAttribute("data-trace-id") === ref.sourceMessageId);
-    return root ? [{ root, mark: { id: record.answerId, selection: ref.selection, pending: record.status === "generating" } }] : [];
+  const marks = conceptRecords.flatMap((record) => record.status === "ready" || record.status === "generating" || (record.kind === "qa" && record.status === "failed") ? record.references.filter((ref) => ref.sourceUrl === location.href).flatMap((ref) => {
+    const candidates = document.querySelectorAll('[data-content-search-unit-key],[data-message-author-role="assistant"],[data-author="assistant"],article[data-testid^="conversation-turn-"],.agent-chat__bubble--ai,[data-testid="receive_message"],[class*="bg-g-receive-msg-bubble"],.ds-message:has(.ds-assistant-message-main-content),.chat-content-item-assistant,.segment-assistant');
+    const messages = [...new Set([...candidates].map((message) => findAssistantMessage(message, location.href)).filter((message): message is Element => !!message))];
+    let root = [...messages].find((message) => message.getAttribute("data-message-id") === ref.sourceMessageId || message.querySelector("[data-message-id]")?.getAttribute("data-message-id") === ref.sourceMessageId || message.querySelector("[data-trace-id]")?.getAttribute("data-trace-id") === ref.sourceMessageId);
+    if (!root) {
+      const matches = [...messages].filter((message) => findConceptRange(message, ref.selection));
+      if (matches.length === 1) root = matches[0];
+    }
+    return root ? [{ root, mark: { id: record.answerId, selection: ref.selection, pending: record.status === "generating", kind: record.kind } }] : [];
   }) : []);
   conceptController?.setMarks(marks);
 }
@@ -99,7 +111,12 @@ window.addEventListener("DOMContentLoaded", () => {
       if (!payload) throw new Error("回答仍在生成，请稍候");
       return ipcRenderer.invoke("concepts:select-page", { payload, selection });
     }).catch((error: unknown) => ipcRenderer.send(IPC.aiAdapterErrorFromPage, error instanceof Error ? error.message : "概念选取失败"));
-  }, (id) => ipcRenderer.send("concepts:open-page", id));
+  }, (id) => ipcRenderer.send("concepts:open-page", id), { onAsk: (root, selection) => {
+    void extractAnswerFromTarget(root, location.href).then((payload) => {
+      if (!payload) throw new Error("回答仍在生成，请稍候");
+      return ipcRenderer.invoke("concepts:question-page", { payload, selection });
+    }).catch((error: unknown) => ipcRenderer.send(IPC.aiAdapterErrorFromPage, error instanceof Error ? error.message : "答疑选取失败"));
+  } });
   paintConcepts();
   void ipcRenderer.invoke("concepts:page-marks").then((records: ConceptRecord[]) => { conceptRecords = records; paintConcepts(); }).catch(() => undefined);
   const refresh = setInterval(paintConcepts, 1500);
@@ -113,7 +130,7 @@ window.addEventListener("DOMContentLoaded", () => {
 });
 
 ipcRenderer.on("concepts:marks", (_event, records: ConceptRecord[]) => { conceptRecords = records; paintConcepts(); });
-ipcRenderer.on("concepts:generate", (_event, job: { id: string; provider: "chatgpt" | "yuanbao" | "doubao"; prompt: string }) => {
+ipcRenderer.on("concepts:generate", (_event, job: { id: string; provider: ProviderId; prompt: string }) => {
   generation?.abort(); generation = new AbortController();
   void generateConcept(document, job.provider, job.prompt, generation.signal).then((payload) => ipcRenderer.invoke("concepts:generated-page", { id: job.id, payload }))
     .catch((error: unknown) => ipcRenderer.invoke("concepts:failed-page", { id: job.id, error: error instanceof Error ? error.message : "概念生成失败" })).catch(() => undefined);

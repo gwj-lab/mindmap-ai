@@ -9,10 +9,12 @@ interface ManagedTab extends AiTab {
   bounds: PanelBounds | null;
   hoverCaptureEnabled: boolean;
   expansionPrompt: string;
+  captureMode?: 'single' | 'expanded';
 }
 
 export class AiViewManager {
   readonly #tabs = new Map<string, ManagedTab>();
+  readonly #backgroundTabs = new Set<string>();
   #visible = true;
   #dragging = false;
 
@@ -27,14 +29,15 @@ export class AiViewManager {
   syncTabs(tabs: AiTab[]): void {
     const wanted = new Map(tabs.map((tab) => [tab.id, tab.provider]));
     for (const tab of this.#tabs.values()) {
-      if (wanted.get(tab.id) !== tab.provider) this.#closeTab(tab);
+      if (wanted.has(tab.id)) this.#backgroundTabs.delete(tab.id);
+      if (!this.#backgroundTabs.has(tab.id) && wanted.get(tab.id) !== tab.provider) this.#closeTab(tab);
     }
     for (const tab of tabs) {
       if (!this.#tabs.has(tab.id)) this.#createTab(tab);
     }
   }
 
-  #createTab(descriptor: AiTab): void {
+  #createTab(descriptor: AiTab, background = false): void {
     const view = new WebContentsView({
       webPreferences: {
         preload: this.preloadPath,
@@ -43,7 +46,8 @@ export class AiViewManager {
         contextIsolation: true,
         sandbox: true,
         webSecurity: true,
-        allowRunningInsecureContent: false
+        allowRunningInsecureContent: false,
+        backgroundThrottling: !background
       }
     });
     this.owner.contentView.addChildView(view);
@@ -53,6 +57,7 @@ export class AiViewManager {
     };
     this.#tabs.set(tab.id, tab);
     view.setVisible(false);
+    if (background) { this.#backgroundTabs.add(tab.id); view.setBounds({ x: 0, y: 0, width: 1280, height: 900 }); }
     this.#configureSecurity(view);
     view.webContents.on("did-finish-load", () => this.#sendHoverCaptureState(tab));
     void view.webContents.loadURL(AI_PROVIDERS[tab.provider].url).catch(() => {
@@ -106,14 +111,14 @@ export class AiViewManager {
     this.#sendHoverCaptureState(tab);
   }
 
-  setExpansionPrompt(prompt: string, tabId = "ai"): void {
+  setExpansionPrompt(prompt: string, tabId = "ai", captureMode?: 'single' | 'expanded'): void {
     const tab = this.#tabs.get(tabId);
-    if (tab) tab.expansionPrompt = prompt;
+    if (tab) { tab.expansionPrompt = prompt; if (captureMode) tab.captureMode = captureMode; }
   }
 
-  getCaptureContext(sender: Electron.WebContents): { provider: AiTab["provider"]; expansionPrompt: string } | null {
+  getCaptureContext(sender: Electron.WebContents): { provider: AiTab["provider"]; expansionPrompt: string; captureMode?: 'single' | 'expanded' } | null {
     for (const tab of this.#tabs.values()) {
-      if (tab.view.webContents === sender) return { provider: tab.provider, expansionPrompt: tab.expansionPrompt };
+      if (tab.view.webContents === sender) return { provider: tab.provider, expansionPrompt: tab.expansionPrompt, ...(tab.captureMode ? { captureMode: tab.captureMode } : {}) };
     }
     return null;
   }
@@ -130,6 +135,16 @@ export class AiViewManager {
     if (tab.view.webContents.isLoading()) tab.view.webContents.once("did-finish-load", send); else send();
   }
 
+  startBackgroundConcept(descriptor: AiTab, id: string, prompt: string): void {
+    if (!this.#tabs.has(descriptor.id)) this.#createTab(descriptor, true);
+    this.startConcept(descriptor.id, id, prompt);
+  }
+
+  closeBackgroundConcept(tabId: string): void {
+    const tab = this.#tabs.get(tabId);
+    if (tab && this.#backgroundTabs.has(tabId)) this.#closeTab(tab);
+  }
+
   broadcastConcepts(marks: unknown): void {
     for (const tab of this.#tabs.values()) if (!tab.view.webContents.isDestroyed()) tab.view.webContents.send("concepts:marks", marks);
   }
@@ -140,6 +155,7 @@ export class AiViewManager {
 
   #closeTab(tab: ManagedTab): void {
     this.#tabs.delete(tab.id);
+    this.#backgroundTabs.delete(tab.id);
     if (!this.owner.isDestroyed()) this.owner.contentView.removeChildView(tab.view);
     if (!tab.view.webContents.isDestroyed()) tab.view.webContents.close();
   }

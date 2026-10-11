@@ -50,14 +50,23 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): () => vo
 }
 
 const api: DesktopApi = {
+  sync: {
+    getSettings: () => ipcRenderer.invoke('sync:get-settings'), saveSettings: (input) => ipcRenderer.invoke('sync:save-settings', input), clearSettings: () => ipcRenderer.invoke('sync:clear-settings'),
+    testConnection: () => ipcRenderer.invoke('sync:test'), upload: () => ipcRenderer.invoke('sync:upload'), download: () => ipcRenderer.invoke('sync:download')
+  },
+  search: { query: (query, includeContent) => ipcRenderer.invoke('workspace:search', { query, includeContent }) },
+  clipboard: { readText: () => ipcRenderer.invoke("clipboard:read-text"), writeText: (text) => ipcRenderer.invoke("clipboard:write-text", text) },
   concepts: {
     get: () => ipcRenderer.invoke("concepts:get"),
     settings: (settings) => ipcRenderer.invoke("concepts:settings", settings),
+    questionSettings: (settings) => ipcRenderer.invoke("concepts:question-settings", settings),
     prepare: (request) => ipcRenderer.invoke("concepts:prepare", request),
+    prepareQuestion: (request) => ipcRenderer.invoke("concepts:prepare-question", request),
     retry: (id) => ipcRenderer.invoke("concepts:retry", id),
-    run: (id) => ipcRenderer.invoke("concepts:run", id),
+    run: (id, background = false) => ipcRenderer.invoke("concepts:run", id, background),
     update: (id, action, title) => ipcRenderer.invoke("concepts:update", { id, action, title }),
     onRequest: (listener) => subscribe("concepts:request", listener),
+    onQuestionRequest: (listener) => subscribe("concepts:question-request", listener),
     onChanged: (listener) => subscribe("concepts:changed", listener),
     onOpen: (listener) => subscribe("concepts:open", listener)
   },
@@ -81,6 +90,7 @@ const api: DesktopApi = {
     forgetRecent: (id) => ipcRenderer.invoke(IPC.workspaceForgetRecent, { id })
   },
   project: {
+    createAttachment: (nodeUid, kind) => ipcRenderer.invoke('project:create-attachment', { nodeUid, kind }),
     create: () => ipcRenderer.invoke(IPC.projectCreate),
     open: () => ipcRenderer.invoke(IPC.projectOpen),
     save: (snapshot: ProjectSnapshot) => ipcRenderer.invoke(IPC.projectSave, snapshot),
@@ -111,7 +121,7 @@ const api: DesktopApi = {
     captureLatest: (tabId) => ipcRenderer.send(IPC.aiCaptureLatest, tabId),
     pickAnswer: (tabId) => ipcRenderer.send(IPC.aiPickAnswer, tabId),
     setHoverCapture: (enabled: boolean, tabId) => ipcRenderer.send(IPC.aiSetHoverCapture, enabled, tabId),
-    setExpansionPrompt: (prompt: string, tabId) => ipcRenderer.send(IPC.aiSetExpansionPrompt, prompt, tabId),
+    setExpansionPrompt: (prompt: string, tabId, captureMode) => ipcRenderer.send(IPC.aiSetExpansionPrompt, prompt, tabId, captureMode),
     beginLocalDrag: () => ipcRenderer.send(IPC.aiBeginLocalDrag),
     endLocalDrag: () => ipcRenderer.send(IPC.aiEndLocalDrag),
     onAnswerCaptured: (listener) => subscribe(IPC.aiAnswerCaptured, listener),

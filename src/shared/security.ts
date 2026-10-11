@@ -1,9 +1,10 @@
+import { PROVIDER_HOSTS } from "./ai-providers.js";
 import { z } from "zod";
 import type { PanelBounds } from "./types.js";
 
 export type NavigationClass = "internal" | "oauth" | "external" | "blocked";
 
-const INTERNAL_HOSTS = new Set(["chatgpt.com", "openai.com", "auth.openai.com", "yuanbao.tencent.com", "www.doubao.com"]);
+const INTERNAL_HOSTS = new Set(["chatgpt.com", "openai.com", "auth.openai.com", ...Object.values(PROVIDER_HOSTS).flat()]);
 const OAUTH_HOSTS = new Set([
   "accounts.google.com",
   "login.microsoftonline.com",

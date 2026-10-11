@@ -1,0 +1,49 @@
+{
+  "provider": "kimi",
+  "source": "real DOM and computed styles replayed in production sandboxed Electron preload",
+  "headings": [
+    "回答格式验收",
+    "一级标题 H1",
+    "三级标题 H3",
+    "六级标题 H6",
+    "列表",
+    "表格",
+    "链接、图片、脚注、价格",
+    "代码块",
+    "LaTeX 公式",
+    "Footnotes"
+  ],
+  "code": [
+    {
+      "language": "language-javascript",
+      "text": "const price = 100; // $100\nlet total = `$${(9.99).toFixed(2)}`;\n\nfunction greet(name) {\n  return `Hello, ${name}`;\n}\n\nconsole.log(greet(\"World\"));\n"
+    },
+    {
+      "language": "language-python",
+      "text": "def fib(n):\n    if n < 2:\n        return n\n    return fib(n - 1) + fib(n - 2)\n\nprint(fib(10))  # 55\n"
+    },
+    {
+      "language": "language-mermaid",
+      "text": "graph TD\n    A[开始] --> B{条件判断}\n    B -->|是| C[执行任务]\n    B -->|否| D[结束流程]\n    C --> D\n"
+    },
+    {
+      "language": "language-text",
+      "text": "# 纯文本代码块\n保留缩进    和空行\n\n`echo \"hello\"`\ntotal = $100 + $9.99\n"
+    }
+  ],
+  "formulas": 0,
+  "snapshotFormulas": 14,
+  "snapshots": 14,
+  "tableAlign": [
+    "left",
+    "center",
+    "right",
+    "left"
+  ],
+  "tableBreaks": 2,
+  "tasks": [
+    true,
+    false,
+    true
+  ]
+}

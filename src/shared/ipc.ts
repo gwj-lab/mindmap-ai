@@ -1,3 +1,4 @@
+import { PROVIDER_IDS, PROVIDER_HOSTS } from "./ai-providers.js";
 import { z } from "zod";
 import { answerDocumentSchema } from "./project.js";
 import { candidateNodeV2Schema } from "./workspace.js";
@@ -41,6 +42,7 @@ export const IPC = {
   aiBeginLocalDrag: "ai:begin-local-drag",
   aiEndLocalDrag: "ai:end-local-drag",
   aiCapturedFromPage: "ai:captured-from-page",
+  aiReadNativeMarkdown: 'ai:read-native-markdown',
   aiAnswerCaptured: "ai:answer-captured",
   aiAdapterErrorFromPage: "ai:adapter-error-from-page",
   aiAdapterError: "ai:adapter-error"
@@ -50,7 +52,7 @@ const projectIdSchema = z.string().uuid();
 export const aiTabIdSchema = z.string().min(1).max(128);
 export const aiTabsSchema = z.array(z.object({
   id: aiTabIdSchema,
-  provider: z.enum(["chatgpt", "yuanbao", "doubao"])
+  provider: z.enum(PROVIDER_IDS)
 }).strict()).max(64).refine((tabs) => new Set(tabs.map((tab) => tab.id)).size === tabs.length, {
   message: "Duplicate AI tab identifiers"
 });
@@ -111,15 +113,13 @@ export const projectPermanentDeleteRequestSchema = z.object({
 }).strict();
 
 export const capturedAnswerPayloadSchema = z.object({
-  provider: z.enum(["chatgpt", "yuanbao", "doubao"]),
+  provider: z.enum(PROVIDER_IDS),
   sourceUrl: z.string().url(),
   sourceMessageId: z.string().min(1).max(256),
   markdown: z.string().trim().min(1).max(5_000_000)
 }).refine((payload) => {
   const hostname = new URL(payload.sourceUrl).hostname;
-  return payload.sourceUrl.startsWith("https://") && hostname === {
-    chatgpt: "chatgpt.com", yuanbao: "yuanbao.tencent.com", doubao: "www.doubao.com"
-  }[payload.provider];
+  return payload.sourceUrl.startsWith("https://") && PROVIDER_HOSTS[payload.provider].includes(hostname);
 }, { message: "Provider and source URL do not match" });
 
 export const captureAcknowledgementSchema = z.discriminatedUnion("status", [

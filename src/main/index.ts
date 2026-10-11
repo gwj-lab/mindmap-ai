@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, net, safeStorage, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, net, safeStorage, shell } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CaptureService } from "./capture-service.js";
@@ -11,6 +11,9 @@ import { isTrustedIpcSender } from "./ipc-guards.js";
 import { SettingsStore } from "./settings-store.js";
 import { TitleService } from "./title-service.js";
 import { registerConceptIpc } from "./concept-ipc.js";
+import { registerNodeToolsIpc } from './node-tools-ipc.js';
+import { registerS3Ipc } from './s3-ipc.js';
+import { copyMarkdownInPage } from '../shared/page-copy.js';
 import {
   IPC,
   aiTabIdSchema,
@@ -83,6 +86,14 @@ async function selectProjectDirectory(title: string): Promise<string | null> {
 }
 
 function registerIpc(): void {
+  registerNodeToolsIpc(requireWorkspaceStore, assertLocalSender);
+  registerS3Ipc(requireWorkspaceStore, assertLocalSender, activateWorkspace);
+  ipcMain.handle("clipboard:read-text", async (event) => { assertLocalSender(event); return (await clipboard.readText()).slice(0, 2_000_000); });
+  ipcMain.handle("clipboard:write-text", async (event, text: unknown) => {
+    assertLocalSender(event);
+    if (typeof text !== "string" || text.length > 2_000_000) throw new Error("复制内容过大或无效");
+    await clipboard.writeText(text);
+  });
   const writeConceptAnswer = registerConceptIpc(() => mainWindow, () => aiManager, () => activeWorkspaceStore);
   ipcMain.handle(IPC.settingsGetPublic, (event) => {
     assertLocalSender(event);
@@ -299,10 +310,11 @@ function registerIpc(): void {
     if (typeof enabled !== "boolean") throw new Error("Invalid hover capture state");
     aiManager?.setHoverCapture(enabled, aiTabIdSchema.parse(tabId ?? "ai"));
   });
-  ipcMain.on(IPC.aiSetExpansionPrompt, (event, prompt: unknown, tabId) => {
+  ipcMain.on(IPC.aiSetExpansionPrompt, (event, prompt: unknown, tabId, captureMode: unknown) => {
     assertLocalSender(event);
     if (typeof prompt !== "string" || prompt.length > 4000) throw new Error("Invalid expansion prompt");
-    aiManager?.setExpansionPrompt(prompt.trim(), aiTabIdSchema.parse(tabId ?? "ai"));
+    if (captureMode !== undefined && captureMode !== 'single' && captureMode !== 'expanded') throw new Error('Invalid capture mode');
+    aiManager?.setExpansionPrompt(prompt.trim(), aiTabIdSchema.parse(tabId ?? "ai"), captureMode);
   });
   ipcMain.on(IPC.aiBeginLocalDrag, (event) => {
     assertLocalSender(event);
@@ -312,20 +324,34 @@ function registerIpc(): void {
     assertLocalSender(event);
     aiManager?.setDragging(false);
   });
+  const nativeCopies = new Map<number, Promise<string | null>>();
+  ipcMain.handle(IPC.aiReadNativeMarkdown, async (event, token: unknown) => {
+    const context = aiManager?.getCaptureContext(event.sender);
+    if (context?.provider !== 'kimi' || typeof token !== 'string' || !/^[a-f0-9-]{36}$/.test(token)
+      || !['www.kimi.com', 'kimi.com', 'kimi.moonshot.cn'].includes(new URL(event.sender.getURL()).hostname)) throw new Error('Untrusted native copy request');
+    if (nativeCopies.has(event.sender.id)) return null;
+    const pending = event.sender.executeJavaScript(`(${copyMarkdownInPage.toString()})(${JSON.stringify(token)})`, true) as Promise<string | null>;
+    nativeCopies.set(event.sender.id, pending);
+    try { return await pending; } finally { nativeCopies.delete(event.sender.id); }
+  });
   ipcMain.handle(IPC.aiCapturedFromPage, async (event, rawPayload) => {
     const context = aiManager?.getCaptureContext(event.sender);
     if (!context) throw new Error("Untrusted capture sender");
     const payload = capturedAnswerPayloadSchema.parse(rawPayload);
     if (payload.provider !== context.provider) throw new Error("Capture provider does not match tab");
     if (new URL(payload.sourceUrl).hostname !== new URL(event.sender.getURL()).hostname) throw new Error("Capture source does not match page");
-    const acknowledgement = await new CaptureService(requireStore(), {
+    const captureStore = requireStore();
+    const scope = activeWorkspaceStore ? { projectId: activeWorkspaceStore.getSummary().activeProjectId ?? undefined, workspaceId: activeWorkspaceStore.getSummary().workspaceId } : {};
+    const acknowledgement = await new CaptureService(captureStore, {
+      onCaptured: (saved) => mainWindow?.webContents.send(IPC.aiAnswerCaptured, { ...saved, ...scope }),
       expansionPrompt: context.expansionPrompt,
+      captureMode: context.captureMode,
       portable: activeWorkspaceStore !== null,
       ...(settingsStore ? { settingsStore } : {}),
       ...(titleService ? { titleService } : {})
     }).capture(payload);
     if (acknowledgement.status === "captured") {
-      mainWindow?.webContents.send(IPC.aiAnswerCaptured, acknowledgement);
+      mainWindow?.webContents.send(IPC.aiAnswerCaptured, { ...acknowledgement, phase: "complete", ...scope });
     }
     return acknowledgement;
   });

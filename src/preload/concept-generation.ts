@@ -4,7 +4,9 @@ import { extractLatestAnswer } from "./answer-adapter.js";
 const selectors: Record<ProviderId, { editor: string; send: string }> = {
   chatgpt: { editor: '#prompt-textarea, textarea[name="prompt-textarea"]', send: '[data-testid="send-button"], button[aria-label="Send prompt"], button[aria-label="发送提示"]' },
   yuanbao: { editor: '.ql-editor[contenteditable="true"], textarea, [contenteditable="true"][role="textbox"]', send: '#yuanbao-send-btn, .agent-chat__input__send, .agent-chat__input-send, .input-send-btn, button[aria-label*="发送"]' },
-  doubao: { editor: '.tiptap.ProseMirror[contenteditable="true"], [data-testid="chat_input_input"], textarea, [contenteditable="true"][role="textbox"]', send: '[data-testid="chat_input_send_button"], button[aria-label*="发送"]' }
+  doubao: { editor: '.tiptap.ProseMirror[contenteditable="true"], [data-testid="chat_input_input"], textarea, [contenteditable="true"][role="textbox"]', send: '[data-testid="chat_input_send_button"], button[aria-label*="发送"]' },
+  deepseek: { editor: 'textarea[placeholder*="DeepSeek"]', send: '[role="button"].ds-button--primary.ds-button--circle:not(.ds-button--disabled)' },
+  kimi: { editor: '.chat-input-editor[contenteditable="true"]', send: '.send-button-container:not(.disabled,.loading,.stop)' }
 };
 function editorFor(documentRef: Document, provider: ProviderId): HTMLElement | null {
   return [...documentRef.querySelectorAll<HTMLElement>(selectors[provider].editor)].find((element) => !element.closest('[aria-hidden="true"]') && !element.hasAttribute("disabled") && element.getClientRects().length > 0) ?? null;

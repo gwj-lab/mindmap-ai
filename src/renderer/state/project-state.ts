@@ -196,7 +196,9 @@ export function applyPersistedCandidate(
   candidate: CandidateNode
 ): ActiveProjectSnapshot {
   if (snapshot.state.candidates.some((item) => item.id === candidate.id || item.answerId === candidate.answerId)) {
-    return snapshot;
+    const existing = snapshot.state.candidates.find((item) => item.id === candidate.id || item.answerId === candidate.answerId)!;
+    if (JSON.stringify(existing) === JSON.stringify(candidate)) return snapshot;
+    return { ...snapshot, state: { ...snapshot.state, candidates: snapshot.state.candidates.map((item) => item.id === candidate.id || item.answerId === candidate.answerId ? candidate : item) } };
   }
   return {
     ...snapshot,

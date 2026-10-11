@@ -9,7 +9,7 @@ function serializeAnswer(answer: AnswerDocument): string {
   return `---\n${YAML.stringify(answer.metadata).trimEnd()}\n---\n${answer.body}`;
 }
 
-function parseAnswer(raw: string): AnswerDocument {
+export function parseAnswer(raw: string): AnswerDocument {
   const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
   if (!match) throw new Error("Invalid answer frontmatter");
   return answerDocumentSchema.parse({

@@ -45,6 +45,7 @@
     }
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1149.0",
     "@codemirror/lang-markdown": "^6.5.0",
     "@uiw/react-codemirror": "^4.25.4",
     "flexlayout-react": "0.10.5",

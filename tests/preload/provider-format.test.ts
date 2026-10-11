@@ -7,6 +7,9 @@ import { htmlToMarkdown } from "../../src/shared/content.js";
 import { extractAnswerFromTarget, extractLatestAnswer, extractSelectedAnswer, findAssistantMessage } from "../../src/preload/answer-adapter.js";
 import { yuanbaoToMarkdown } from "../../src/preload/yuanbao-adapter.js";
 import { doubaoToMarkdown } from "../../src/preload/doubao-adapter.js";
+import { deepseekToMarkdown } from '../../src/preload/deepseek-adapter.js';
+import { kimiToMarkdown } from '../../src/preload/kimi-adapter.js';
+import { chatgptRichToMarkdown } from '../../src/preload/chatgpt-rich.js';
 
 const fixture = (provider: string, name: string) => readFileSync(path.resolve("tests/fixtures", provider, name), "utf8");
 beforeEach(() => { document.body.innerHTML = ""; });
@@ -75,7 +78,7 @@ describe("independent platform answer formats", () => {
     expect(document.body.innerHTML).toBe(original);
   });
 
-  for (const [provider, convert] of [["yuanbao", yuanbaoToMarkdown], ["doubao", doubaoToMarkdown]] as const) {
+  for (const [provider, convert] of [["yuanbao", yuanbaoToMarkdown], ["doubao", doubaoToMarkdown], ['deepseek', deepseekToMarkdown], ['kimi', kimiToMarkdown], ['chatgpt', chatgptRichToMarkdown]] as const) {
     test(`${provider}: headings, nested lists, tasks, quotes, links, images, footnotes and special characters`, () => {
       const root = document.createElement("article");
       root.innerHTML = '<h1>Title</h1><h2>Two</h2><h3>Three</h3><h4>Four</h4><h5>Five</h5><h6>Six</h6>'

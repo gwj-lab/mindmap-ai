@@ -74,7 +74,7 @@ export function AiPanel({
   }, [autoHoverCapture, readOnly, tabId]);
 
   useEffect(() => {
-    window.mindmapAI.ai.setExpansionPrompt(captureMode === "expanded" && !readOnly ? expansionPrompt : "", tabId);
+    window.mindmapAI.ai.setExpansionPrompt(captureMode === "expanded" && !readOnly ? expansionPrompt : "", tabId, captureMode);
     return () => window.mindmapAI.ai.setExpansionPrompt("", tabId);
   }, [captureMode, expansionPrompt, readOnly, tabId]);
 
