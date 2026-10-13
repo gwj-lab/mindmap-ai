@@ -23,7 +23,7 @@ Instead of searching back through a long chat, capture the answer that matters a
 
 ## Download
 
-Download the latest Windows x64 installer from [GitHub Releases](https://github.com/650865589/mindmap-ai/releases/latest).
+Download the latest Windows x64 installer from [GitHub Releases](https://github.com/gwj-lab/mindmap-ai/releases/latest).
 
 Mindmap AI is designed for Windows 10/11. ChatGPT sign-in uses an isolated Electron session; the app does not read or store your ChatGPT password. An optional OpenAI-compatible HTTPS API can generate titles and child topics. API keys are stored by the Electron main process using Windows secure storage.
 
